@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}DockSentinel | Reports{% endblock %}
+{% block content %}
+<div class="grid lg:grid-cols-3 gap-4">
+  <section class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+    <div class="flex items-center justify-between">
+      <h1 class="text-lg font-semibold">Daily Reports</h1>
+      <form method="post" action="{{ url_for('reports_generate') }}">
+        <button class="px-3 py-1.5 rounded bg-cyan-600 hover:bg-cyan-500 text-sm">Generate</button>
+      </form>
+    </div>
+    <ul class="mt-3 space-y-2 text-sm">
+      {% for report in reports %}
+        <li>
+          <a href="{{ url_for('reports_page', id=report.id) }}" class="block border border-slate-800 rounded p-2 hover:border-cyan-500">
+            #{{ report.id }} | {{ report.created_at }} | {{ report.status }}
+          </a>
+        </li>
+      {% else %}
+        <li class="text-slate-400">No reports yet.</li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  <section class="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl p-4">
+    {% if selected_report %}
+      <h2 class="text-lg font-semibold">Report #{{ selected_report.id }}</h2>
+      <p class="text-sm text-slate-300 mt-1">Window: {{ selected_report.period_start }} to {{ selected_report.period_end }}</p>
+      <pre class="mt-4 whitespace-pre-wrap bg-slate-950 border border-slate-800 rounded p-3 text-sm">{{ selected_report.markdown_content }}</pre>
+    {% else %}
+      <p class="text-slate-400">Select a report to view details.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

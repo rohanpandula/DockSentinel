@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}DockSentinel | Exclusions{% endblock %}
+{% block content %}
+<section class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+  <h1 class="text-xl font-semibold">Exclusion Rules</h1>
+  <form method="post" class="mt-3 flex gap-2">
+    <input name="container_pattern" placeholder="container name pattern" class="flex-1 px-3 py-2 rounded bg-slate-800 border border-slate-700" />
+    <button class="px-4 py-2 rounded bg-cyan-600 hover:bg-cyan-500">Add</button>
+  </form>
+
+  <table class="w-full mt-4 text-sm">
+    <thead>
+      <tr class="text-slate-300">
+        <th class="text-left py-2">Pattern</th>
+        <th class="text-left py-2">Enabled</th>
+        <th class="text-left py-2">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for rule in exclusions %}
+        <tr class="border-t border-slate-800">
+          <td class="py-2">{{ rule.container_pattern }}</td>
+          <td class="py-2">{{ rule.enabled }}</td>
+          <td class="py-2"><a class="text-rose-400 hover:underline" href="{{ url_for('exclusions_delete', rule_id=rule.id) }}">Delete</a></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="3" class="py-4 text-slate-400">No exclusions configured.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

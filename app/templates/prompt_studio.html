@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}DockSentinel | Prompt Studio{% endblock %}
+{% block content %}
+<section class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+  <h1 class="text-xl font-semibold">Prompt Engineering Studio</h1>
+
+  <form method="get" class="mt-3">
+    <label class="text-sm text-slate-300">Prompt Key</label>
+    <select name="key" onchange="this.form.submit()" class="w-full mt-1 px-3 py-2 rounded bg-slate-800 border border-slate-700">
+      {% for prompt in prompts %}
+        <option value="{{ prompt.key }}" {% if selected_prompt and prompt.key == selected_prompt.key %}selected{% endif %}>{{ prompt.key }}</option>
+      {% endfor %}
+    </select>
+  </form>
+
+  {% if selected_prompt %}
+    <form method="post" class="mt-4">
+      <input type="hidden" name="key" value="{{ selected_prompt.key }}" />
+      <p class="text-sm text-slate-300">Version: {{ selected_prompt.version }} | Default: {{ selected_prompt.is_default }}</p>
+      <textarea name="content" rows="14" class="w-full mt-2 px-3 py-2 rounded bg-slate-800 border border-slate-700 font-mono text-sm">{{ selected_prompt.content }}</textarea>
+      <div class="mt-3 flex gap-2">
+        <button name="action" value="save" class="px-4 py-2 rounded bg-cyan-600 hover:bg-cyan-500">Save</button>
+        <button name="action" value="reset" class="px-4 py-2 rounded bg-amber-700 hover:bg-amber-600">Restore Default</button>
+      </div>
+    </form>
+  {% endif %}
+</section>
+{% endblock %}

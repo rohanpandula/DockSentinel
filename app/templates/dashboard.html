@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}DockSentinel | Dashboard{% endblock %}
+{% block content %}
+<div class="grid lg:grid-cols-3 gap-4">
+  <section class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+    <h2 class="text-lg font-semibold">Sentinel Status</h2>
+    <p class="mt-2 text-sm text-slate-300">Enabled: <span class="font-semibold">{{ state.enabled }}</span></p>
+    <p class="text-sm text-slate-300">Runtime: <span class="font-semibold">{{ state.runtime_status }}</span></p>
+    <p class="text-sm text-slate-300">LLM failures: <span class="font-semibold">{{ state.llm_failure_count }}</span></p>
+    <p class="text-sm text-slate-300">Active containers: <span class="font-semibold">{{ active_containers|length }}</span></p>
+    <div class="mt-4 flex gap-2">
+      <form method="post" action="{{ url_for('sentinel_toggle_from_ui') }}">
+        <input type="hidden" name="enabled" value="true" />
+        <button class="px-3 py-2 text-sm rounded bg-emerald-600 hover:bg-emerald-500">Start</button>
+      </form>
+      <form method="post" action="{{ url_for('sentinel_toggle_from_ui') }}">
+        <input type="hidden" name="enabled" value="false" />
+        <button class="px-3 py-2 text-sm rounded bg-rose-700 hover:bg-rose-600">Stop</button>
+      </form>
+    </div>
+  </section>
+
+  <section class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+    <h2 class="text-lg font-semibold">Today Counts</h2>
+    <div class="mt-3 space-y-2 text-sm">
+      <p>Critical: <span class="text-rose-400 font-semibold">{{ counts.critical }}</span></p>
+      <p>Warning: <span class="text-amber-300 font-semibold">{{ counts.warning }}</span></p>
+      <p>Noise: <span class="text-slate-200 font-semibold">{{ counts.noise }}</span></p>
+    </div>
+    <form method="post" action="{{ url_for('reports_generate') }}" class="mt-4">
+      <button class="px-3 py-2 text-sm rounded bg-indigo-600 hover:bg-indigo-500">Generate Nightly Report Now</button>
+    </form>
+  </section>
+
+  <section class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+    <h2 class="text-lg font-semibold">Analyze Now</h2>
+    <form method="post" action="{{ url_for('sentinel_analyze_from_ui') }}" class="mt-3 space-y-2">
+      <input name="container" placeholder="container name or id" class="w-full px-3 py-2 rounded bg-slate-800 border border-slate-700 text-sm" />
+      <button class="px-3 py-2 text-sm rounded bg-cyan-600 hover:bg-cyan-500">Run Analysis</button>
+    </form>
+    {% if latest_report %}
+      <a href="{{ url_for('reports_page', id=latest_report.id) }}" class="block mt-4 text-sm text-cyan-300 hover:underline">Latest report #{{ latest_report.id }}</a>
+    {% endif %}
+  </section>
+</div>
+
+<section class="mt-6 bg-slate-900 border border-slate-800 rounded-xl p-4">
+  <h2 class="text-lg font-semibold mb-3">Latest 10 Events</h2>
+  <div class="overflow-x-auto">
+    <table class="min-w-full text-sm">
+      <thead class="text-slate-300">
+        <tr>
+          <th class="text-left py-2">Time</th>
+          <th class="text-left py-2">Container</th>
+          <th class="text-left py-2">Status</th>
+          <th class="text-left py-2">Class</th>
+          <th class="text-left py-2">Summary</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in events %}
+          <tr class="border-t border-slate-800">
+            <td class="py-2">{{ e.created_at }}</td>
+            <td class="py-2">{{ e.container_name }}</td>
+            <td class="py-2">{{ e.status }}</td>
+            <td class="py-2">{{ e.classification }}</td>
+            <td class="py-2">{{ e.summary or '-' }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5" class="py-4 text-slate-400">No events yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

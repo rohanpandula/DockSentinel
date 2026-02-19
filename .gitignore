@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+.venv*/
+.pytest_cache/
+instance/
+.env
+
+# Runtime artifacts – never commit database or lock files
+data/*.db
+data/*.db-journal
+data/runtime.lock

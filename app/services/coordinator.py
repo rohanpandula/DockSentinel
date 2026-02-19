@@ -1,0 +1,206 @@
+from __future__ import annotations
+
+import fcntl
+import logging
+import os
+import threading
+
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
+
+from app.models import SentinelState, Settings
+from app.services.docker_watcher import DockerWatcher
+from app.time_utils import utcnow_naive
+
+LOGGER = logging.getLogger(__name__)
+
+
+class RuntimeCoordinator:
+    def __init__(self, app, sentinel_service, briefing_service, health_check_interval_seconds: int = 30) -> None:
+        self.app = app
+        self.sentinel_service = sentinel_service
+        self.briefing_service = briefing_service
+
+        self._lock_fd = None
+        self._scheduler: BackgroundScheduler | None = None
+        self._watcher: DockerWatcher | None = None
+        self._health_check_interval_seconds = health_check_interval_seconds
+        self._health_stop_event = threading.Event()
+        self._health_thread: threading.Thread | None = None
+        self._started = False
+
+    def _acquire_lock(self) -> bool:
+        lock_path = self.app.config["RUNTIME_LOCK_PATH"]
+        os.makedirs(os.path.dirname(lock_path), exist_ok=True)
+
+        self._lock_fd = open(lock_path, "a+", encoding="utf-8")
+        try:
+            fcntl.flock(self._lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            self._lock_fd.seek(0)
+            self._lock_fd.truncate(0)
+            self._lock_fd.write(str(os.getpid()))
+            self._lock_fd.flush()
+            return True
+        except BlockingIOError:
+            self._lock_fd.close()
+            self._lock_fd = None
+            return False
+
+    def _release_lock(self) -> None:
+        if not self._lock_fd:
+            return
+        try:
+            fcntl.flock(self._lock_fd.fileno(), fcntl.LOCK_UN)
+        except OSError:
+            pass
+        self._lock_fd.close()
+        self._lock_fd = None
+
+    def _run_nightly_job(self) -> None:
+        with self.app.app_context():
+            self.briefing_service.generate_report()
+
+    def refresh_schedule(self) -> None:
+        if self._scheduler is None:
+            return
+
+        settings = Settings.singleton()
+        trigger = CronTrigger(hour=settings.nightly_hour, minute=settings.nightly_minute)
+        self._scheduler.add_job(
+            self._run_nightly_job,
+            trigger=trigger,
+            id="nightly_briefing",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
+
+    def trigger_reconcile(self) -> None:
+        if self._watcher is not None:
+            self._watcher.force_reconcile()
+
+    def active_container_ids(self) -> list[str]:
+        if self._watcher is None:
+            return []
+        return self._watcher.active_container_ids()
+
+    def _restart_watcher(self, dead_thread_name: str) -> bool:
+        watcher = self._watcher
+        if watcher is None:
+            return False
+
+        LOGGER.warning("docker watcher %s thread is not alive; restarting watcher", dead_thread_name)
+        try:
+            watcher.stop()
+            watcher.start()
+            watcher.force_reconcile()
+            return True
+        except Exception:
+            LOGGER.warning("failed restarting docker watcher after %s thread failure", dead_thread_name, exc_info=True)
+            return False
+
+    def _check_watcher_health_once(self) -> bool:
+        watcher = self._watcher
+        if watcher is None:
+            return False
+
+        event_thread = getattr(watcher, "_event_thread", None)
+        if event_thread is None or not event_thread.is_alive():
+            return self._restart_watcher("event")
+
+        reconcile_thread = getattr(watcher, "_reconcile_thread", None)
+        if reconcile_thread is None or not reconcile_thread.is_alive():
+            return self._restart_watcher("reconcile")
+
+        return False
+
+    def _health_check_loop(self) -> None:
+        while not self._health_stop_event.wait(self._health_check_interval_seconds):
+            self._check_watcher_health_once()
+
+    def _start_health_monitor(self) -> None:
+        if self._health_thread is not None and self._health_thread.is_alive():
+            return
+        self._health_stop_event.clear()
+        self._health_thread = threading.Thread(
+            target=self._health_check_loop,
+            name="coordinator-health-check",
+            daemon=True,
+        )
+        self._health_thread.start()
+
+    def start(self) -> bool:
+        if self._started:
+            return True
+
+        if self.app.config.get("TESTING"):
+            return False
+
+        if self.app.debug and os.getenv("WERKZEUG_RUN_MAIN") != "true":
+            return False
+
+        if not self._acquire_lock():
+            return False
+
+        with self.app.app_context():
+            settings = Settings.singleton()
+            state = SentinelState.singleton()
+            if state.enabled:
+                state.runtime_status = "running"
+                state.started_at = utcnow_naive()
+            else:
+                state.runtime_status = "stopped"
+            state.last_error = None
+
+            def _line_callback(container_id: str, container_name: str, line: str, flush_only: bool) -> None:
+                with self.app.app_context():
+                    self.sentinel_service.handle_log_line(container_id, container_name, line, flush_only)
+
+            def _is_excluded(container_name: str) -> bool:
+                with self.app.app_context():
+                    return self.sentinel_service.is_excluded_container(container_name)
+
+            self._watcher = DockerWatcher(
+                line_callback=_line_callback,
+                is_excluded_callback=_is_excluded,
+                reconcile_interval_seconds=60,
+            )
+
+            try:
+                self._watcher.start()
+            except Exception as exc:  # pragma: no cover - requires docker runtime
+                state.runtime_status = "degraded"
+                state.last_error = f"docker watcher failed to start: {exc}"
+
+            self._scheduler = BackgroundScheduler()
+            self._scheduler.start()
+            self.refresh_schedule()
+            self._start_health_monitor()
+
+            db_state = SentinelState.singleton()
+            db_state.last_error = state.last_error
+            db_state.runtime_status = state.runtime_status
+
+            from app.extensions import db
+
+            db.session.commit()
+
+        self._started = True
+        return True
+
+    def stop(self) -> None:
+        self._health_stop_event.set()
+        if self._health_thread is not None:
+            self._health_thread.join(timeout=1)
+            self._health_thread = None
+
+        if self._watcher is not None:
+            self._watcher.stop()
+            self._watcher = None
+
+        if self._scheduler is not None:
+            self._scheduler.shutdown(wait=False)
+            self._scheduler = None
+
+        self._release_lock()
+        self._started = False

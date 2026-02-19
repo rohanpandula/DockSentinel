@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}DockSentinel | Settings{% endblock %}
+{% block content %}
+<section class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+  <h1 class="text-xl font-semibold">Settings</h1>
+  <form method="post" class="mt-4 grid md:grid-cols-2 gap-3 text-sm">
+    <label class="space-y-1">Base URL<input name="llm_base_url" value="{{ settings.llm_base_url }}" class="w-full px-3 py-2 rounded bg-slate-800 border border-slate-700" /></label>
+    <label class="space-y-1">API Key<input name="llm_api_key" value="{{ settings.llm_api_key }}" class="w-full px-3 py-2 rounded bg-slate-800 border border-slate-700" /></label>
+    <label class="space-y-1">Model<input name="llm_model" value="{{ settings.llm_model }}" class="w-full px-3 py-2 rounded bg-slate-800 border border-slate-700" /></label>
+    <label class="space-y-1">Provider<input name="llm_provider" value="{{ settings.llm_provider }}" class="w-full px-3 py-2 rounded bg-slate-800 border border-slate-700" /></label>
+    <label class="space-y-1">LLM Transport
+      <select name="llm_transport" class="w-full px-3 py-2 rounded bg-slate-800 border border-slate-700">
+        <option value="api" {% if settings.llm_transport == 'api' %}selected{% endif %}>api</option>
+        <option value="cli" {% if settings.llm_transport == 'cli' %}selected{% endif %}>cli</option>
+      </select>
+    </label>
+    <label class="space-y-1">CLI Backend
+      <select name="cli_backend" class="w-full px-3 py-2 rounded bg-slate-800 border border-slate-700">
+        <option value="codex" {% if settings.cli_backend == 'codex' %}selected{% endif %}>codex</option>
+        <option value="claude" {% if settings.cli_backend == 'claude' %}selected{% endif %}>claude</option>
+        <option value="gemini" {% if settings.cli_backend == 'gemini' %}selected{% endif %}>gemini</option>
+        <option value="ollama" {% if settings.cli_backend == 'ollama' %}selected{% endif %}>ollama</option>
+      </select>
+    </label>
+    <label class="space-y-1">CLI Timeout Seconds<input type="number" min="1" name="cli_timeout_seconds" value="{{ settings.cli_timeout_seconds }}" class="w-full px-3 py-2 rounded bg-slate-800 border border-slate-700" /></label>
+    <label class="space-y-1">CLI Max Retries<input type="number" min="0" name="cli_max_retries" value="{{ settings.cli_max_retries }}" class="w-full px-3 py-2 rounded bg-slate-800 border border-slate-700" /></label>
+    <label class="space-y-1">Telegram Token<input name="telegram_token" value="{{ settings.telegram_token or '' }}" class="w-full px-3 py-2 rounded bg-slate-800 border border-slate-700" /></label>
+    <label class="space-y-1">Telegram Chat ID<input name="telegram_chat_id" value="{{ settings.telegram_chat_id or '' }}" class="w-full px-3 py-2 rounded bg-slate-800 border border-slate-700" /></label>
+    <label class="space-y-1">Nightly Hour<input type="number" min="0" max="23" name="nightly_hour" value="{{ settings.nightly_hour }}" class="w-full px-3 py-2 rounded bg-slate-800 border border-slate-700" /></label>
+    <label class="space-y-1">Nightly Minute<input type="number" min="0" max="59" name="nightly_minute" value="{{ settings.nightly_minute }}" class="w-full px-3 py-2 rounded bg-slate-800 border border-slate-700" /></label>
+    <label class="space-y-1">Max Input Chars<input type="number" name="max_input_chars" value="{{ settings.max_input_chars }}" class="w-full px-3 py-2 rounded bg-slate-800 border border-slate-700" /></label>
+    <label class="space-y-1">Max Input Tokens<input type="number" name="max_input_tokens" value="{{ settings.max_input_tokens }}" class="w-full px-3 py-2 rounded bg-slate-800 border border-slate-700" /></label>
+    <label class="space-y-1">Reserved Output Tokens<input type="number" name="reserved_output_tokens" value="{{ settings.reserved_output_tokens }}" class="w-full px-3 py-2 rounded bg-slate-800 border border-slate-700" /></label>
+    <label class="space-y-1">Token Strategy
+      <select name="token_estimation_strategy" class="w-full px-3 py-2 rounded bg-slate-800 border border-slate-700">
+        <option value="chars" {% if settings.token_estimation_strategy == 'chars' %}selected{% endif %}>chars</option>
+        <option value="tiktoken" {% if settings.token_estimation_strategy == 'tiktoken' %}selected{% endif %}>tiktoken</option>
+      </select>
+    </label>
+    <label class="space-y-1 md:col-span-2">Keywords<input name="keyword_list" value="{{ settings.keyword_list }}" class="w-full px-3 py-2 rounded bg-slate-800 border border-slate-700" /></label>
+    <label class="space-y-1">Alert Cooldown Minutes<input type="number" name="alert_cooldown_minutes" value="{{ settings.alert_cooldown_minutes }}" class="w-full px-3 py-2 rounded bg-slate-800 border border-slate-700" /></label>
+    <label class="space-y-1">Alert Limit Count<input type="number" name="alert_rate_limit_count" value="{{ settings.alert_rate_limit_count }}" class="w-full px-3 py-2 rounded bg-slate-800 border border-slate-700" /></label>
+    <label class="space-y-1">Alert Limit Window Seconds<input type="number" name="alert_rate_limit_window_seconds" value="{{ settings.alert_rate_limit_window_seconds }}" class="w-full px-3 py-2 rounded bg-slate-800 border border-slate-700" /></label>
+    <label class="space-y-1">LLM Timeout Seconds<input type="number" name="llm_timeout_seconds" value="{{ settings.llm_timeout_seconds }}" class="w-full px-3 py-2 rounded bg-slate-800 border border-slate-700" /></label>
+    <label class="space-y-1">LLM Max Retries<input type="number" name="llm_max_retries" value="{{ settings.llm_max_retries }}" class="w-full px-3 py-2 rounded bg-slate-800 border border-slate-700" /></label>
+
+    <div class="md:col-span-2 flex gap-2 pt-2">
+      <button class="px-4 py-2 rounded bg-cyan-600 hover:bg-cyan-500">Save Settings</button>
+      <button type="button" id="btn-test-llm" class="px-4 py-2 rounded bg-indigo-600 hover:bg-indigo-500">Test LLM</button>
+      <button type="button" id="btn-test-telegram" class="px-4 py-2 rounded bg-emerald-700 hover:bg-emerald-600">Test Telegram</button>
+    </div>
+  </form>
+  <p id="settings-test-output" class="mt-3 text-sm text-slate-300"></p>
+</section>
+{% endblock %}
