@@ -40,6 +40,7 @@ class SentinelService:
             reserved_output_tokens=settings.reserved_output_tokens,
             token_strategy=settings.token_estimation_strategy,
             model_name=settings.llm_model,
+            keyword_flush_delay_lines=settings.keyword_flush_delay_lines,
         )
 
     def is_enabled(self) -> bool:
@@ -207,6 +208,43 @@ class SentinelService:
             db.session.add(event)
             db.session.commit()
             return event
+
+        # --- Chunk dedup: skip if the same content was already analyzed recently ---
+        dedup_window = settings.dedup_window_seconds
+        if dedup_window > 0:
+            cutoff = utcnow_naive() - timedelta(seconds=dedup_window)
+            already_analyzed = AnalysisEvent.query.filter(
+                and_(
+                    AnalysisEvent.chunk_hash == event.chunk_hash,
+                    AnalysisEvent.status.notin_(["skipped"]),
+                    AnalysisEvent.created_at >= cutoff,
+                )
+            ).first()
+            if already_analyzed:
+                event.status = "dedup_skipped"
+                event.classification = "noise"
+                db.session.add(event)
+                db.session.commit()
+                return event
+
+        # --- Per-container rate limiting ---
+        container_limit = settings.container_rate_limit_count
+        container_window = settings.container_rate_limit_window_seconds
+        if container_limit > 0 and container_window > 0:
+            window_start = utcnow_naive() - timedelta(seconds=container_window)
+            recent_calls = AnalysisEvent.query.filter(
+                and_(
+                    AnalysisEvent.container_id == container_id,
+                    AnalysisEvent.status.in_(["analyzed", "parse_error", "llm_error"]),
+                    AnalysisEvent.created_at >= window_start,
+                )
+            ).count()
+            if recent_calls >= container_limit:
+                event.status = "rate_limited"
+                event.classification = "noise"
+                db.session.add(event)
+                db.session.commit()
+                return event
 
         sentinel_system = self._prompt(PromptKey.SENTINEL_SYSTEM)
         sentinel_analysis = self._prompt(PromptKey.SENTINEL_ANALYSIS)

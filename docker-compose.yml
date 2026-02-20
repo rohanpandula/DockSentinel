@@ -12,11 +12,13 @@ services:
       - DOCKER_HOST=tcp://host.docker.internal:23751
       - CLI_BACKENDS_DIR=/app/llm-backends
       - CODEX_HOME=/root/.codex
+      - GEMINI_HOME=/root/.gemini
       - SECRET_KEY=${SECRET_KEY:?Set SECRET_KEY in your shell or .env before running docker compose}
       - PYTHONUNBUFFERED=1
     volumes:
       - ./data:/data
-      - ${HOME}/.codex:/root/.codex:ro
+      - ${HOME}/.codex:/root/.codex:rw
+      - ${HOME}/.gemini:/root/.gemini:rw
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped

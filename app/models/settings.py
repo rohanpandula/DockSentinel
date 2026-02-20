@@ -41,6 +41,12 @@ class Settings(db.Model):
     llm_timeout_seconds = db.Column(db.Integer, nullable=False, default=20)
     llm_max_retries = db.Column(db.Integer, nullable=False, default=2)
 
+    # --- LLM call reduction settings ---
+    dedup_window_seconds = db.Column(db.Integer, nullable=False, default=300)
+    container_rate_limit_count = db.Column(db.Integer, nullable=False, default=10)
+    container_rate_limit_window_seconds = db.Column(db.Integer, nullable=False, default=3600)
+    keyword_flush_delay_lines = db.Column(db.Integer, nullable=False, default=5)
+
     updated_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive, onupdate=utcnow_naive)
 
     @classmethod
@@ -76,5 +82,9 @@ class Settings(db.Model):
             "alert_rate_limit_window_seconds": self.alert_rate_limit_window_seconds,
             "llm_timeout_seconds": self.llm_timeout_seconds,
             "llm_max_retries": self.llm_max_retries,
+            "dedup_window_seconds": self.dedup_window_seconds,
+            "container_rate_limit_count": self.container_rate_limit_count,
+            "container_rate_limit_window_seconds": self.container_rate_limit_window_seconds,
+            "keyword_flush_delay_lines": self.keyword_flush_delay_lines,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

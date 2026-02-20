@@ -9,7 +9,8 @@ DockSentinel is a self-hosted AIOps observability agent for Docker environments.
   - CLI mode (pluggable backends: `codex`, `claude`, `gemini`, `ollama`)
 - Real-time Sentinel watchdog with Docker event-driven auto attach/detach
 - Sliding-window log buffering with char/token budget limits
-- Heuristic prefilter for high-signal keywords
+- Heuristic prefilter with word-boundary matching and JSON false-positive suppression
+- LLM call reduction: chunk dedup, per-container rate limiting, keyword batching
 - Single-concurrency lock for CLI backend calls (one call at a time globally)
 - Prompt Engineering Studio (editable, versioned prompt templates)
 - Telegram critical alerts with cooldown and global rate limiting
@@ -94,7 +95,8 @@ Copy `.env.example` and adjust values as needed.
 - `START_COORDINATOR` default: `true`
 - `CLI_BACKENDS_DIR` default: `/app/llm-backends` in Docker
 - `DOCKER_HOST` – set to a `tcp://` address to use a remote Docker daemon (the default compose uses `tcp://host.docker.internal:23751` for a local Socat/TCP tunnel instead of the Docker socket)
-- `CODEX_HOME` – path to Codex credentials directory (mounted read-only in the default compose)
+- `CODEX_HOME` – path to Codex credentials directory (mounted in the default compose)
+- `GEMINI_HOME` – path to Gemini CLI credentials directory (mounted in the default compose)
 - `SECRET_KEY` **required** in non-development environments; must be ≥ 16 characters and not a placeholder value (e.g. `change-me`, `dev-secret-key`)
 
 ## API Endpoints
@@ -143,13 +145,24 @@ Seeded on first startup:
 
 The default `docker-compose.yml` connects to the Docker daemon via a TCP tunnel (`DOCKER_HOST=tcp://host.docker.internal:23751`) rather than mounting `/var/run/docker.sock`. This avoids socket permission issues and works well with Socat-based Docker TCP proxies. To use a direct socket mount instead, remove the `DOCKER_HOST` env var and add a volume for `/var/run/docker.sock`.
 
+## LLM Call Reduction
+
+DockSentinel includes several layers to minimize unnecessary LLM calls:
+
+- **Prefilter word-boundary matching** — keywords like `error` only match whole words, not JSON keys like `"error":0` or compound identifiers like `error_count`
+- **Chunk dedup** — if the same log content (by SHA-256 hash) was already analyzed within the configurable dedup window, the duplicate is skipped (`dedup_window_seconds`, default 300)
+- **Per-container rate limiting** — each container is capped at N LLM calls per rolling window (`container_rate_limit_count` / `container_rate_limit_window_seconds`, default 10 per hour)
+- **Keyword flush delay** — after a keyword hit, the log buffer collects additional context lines before flushing to the LLM (`keyword_flush_delay_lines`, default 5)
+
+All settings are configurable from the Settings page or via `PUT /api/settings`.
+
 ## Testing
 
 ```bash
 python -m pytest -q
 ```
 
-The test suite currently contains 21 tests covering API endpoints, sentinel pipeline (including excluded-event recording, cooldown dedup, and rate limiting), briefing fallback, log buffer, runtime lock health checks, and UI route smoke tests.
+The test suite contains 31 tests covering API endpoints, sentinel pipeline (including excluded-event recording, cooldown dedup, chunk dedup, per-container rate limiting), prefilter word-boundary and JSON-benign filtering, log buffer keyword batching, briefing fallback, runtime lock health checks, and UI route smoke tests.
 
 ## Notes
 

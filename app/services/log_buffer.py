@@ -29,6 +29,8 @@ class _BufferState:
     lines: list[str] = field(default_factory=list)
     chars: int = 0
     last_activity: datetime = field(default_factory=utcnow_naive)
+    keyword_primed: bool = False
+    lines_since_keyword: int = 0
 
 
 class LogBuffer:
@@ -40,6 +42,7 @@ class LogBuffer:
         token_strategy: str = "chars",
         model_name: str | None = None,
         flush_window_seconds: int = 15,
+        keyword_flush_delay_lines: int = 0,
     ) -> None:
         self.max_input_chars = max_input_chars
         self.max_input_tokens = max_input_tokens
@@ -47,6 +50,7 @@ class LogBuffer:
         self.token_strategy = token_strategy
         self.model_name = model_name
         self.flush_window_seconds = flush_window_seconds
+        self.keyword_flush_delay_lines = keyword_flush_delay_lines
         self._buffers: dict[str, _BufferState] = {}
         self._warned_tiktoken_missing = False
         self._warned_model_unknown = False
@@ -115,8 +119,25 @@ class LogBuffer:
         state.chars += len(payload)
         state.last_activity = now
 
+        # Track keyword priming for delayed flush.
+        if keyword_hit:
+            state.keyword_primed = True
+            state.lines_since_keyword = 0
+        elif state.keyword_primed:
+            state.lines_since_keyword += 1
+
         estimated_tokens = self.estimate_tokens("".join(state.lines))
-        if keyword_hit or state.chars >= self.max_input_chars or estimated_tokens >= self.max_input_tokens:
+
+        # Flush conditions:
+        # 1. Size limit exceeded (chars or tokens) — always flush immediately.
+        # 2. Keyword primed AND delay lines met (or delay == 0 for legacy immediate).
+        size_exceeded = state.chars >= self.max_input_chars or estimated_tokens >= self.max_input_tokens
+        keyword_ready = state.keyword_primed and (
+            self.keyword_flush_delay_lines == 0
+            or state.lines_since_keyword >= self.keyword_flush_delay_lines
+        )
+
+        if size_exceeded or keyword_ready:
             maybe_chunk = self._flush(container_id)
             if maybe_chunk:
                 chunks.append(maybe_chunk)
@@ -133,9 +154,11 @@ class LogBuffer:
         reserved_output_tokens: int,
         token_strategy: str,
         model_name: str | None,
+        keyword_flush_delay_lines: int = 0,
     ) -> None:
         self.max_input_chars = max_input_chars
         self.max_input_tokens = max_input_tokens
         self.reserved_output_tokens = reserved_output_tokens
         self.token_strategy = token_strategy
         self.model_name = model_name
+        self.keyword_flush_delay_lines = keyword_flush_delay_lines

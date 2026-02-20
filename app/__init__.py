@@ -85,6 +85,10 @@ def _ensure_settings_schema_compat() -> None:
         "cli_backend": "ALTER TABLE settings ADD COLUMN cli_backend VARCHAR(64) NOT NULL DEFAULT 'codex'",
         "cli_timeout_seconds": "ALTER TABLE settings ADD COLUMN cli_timeout_seconds INTEGER NOT NULL DEFAULT 120",
         "cli_max_retries": "ALTER TABLE settings ADD COLUMN cli_max_retries INTEGER NOT NULL DEFAULT 1",
+        "dedup_window_seconds": "ALTER TABLE settings ADD COLUMN dedup_window_seconds INTEGER NOT NULL DEFAULT 300",
+        "container_rate_limit_count": "ALTER TABLE settings ADD COLUMN container_rate_limit_count INTEGER NOT NULL DEFAULT 10",
+        "container_rate_limit_window_seconds": "ALTER TABLE settings ADD COLUMN container_rate_limit_window_seconds INTEGER NOT NULL DEFAULT 3600",
+        "keyword_flush_delay_lines": "ALTER TABLE settings ADD COLUMN keyword_flush_delay_lines INTEGER NOT NULL DEFAULT 5",
     }
 
     for column_name, statement in migrations.items():
@@ -163,6 +167,10 @@ def _register_web_routes(app: Flask) -> None:
                         "llm_max_retries",
                         "cli_timeout_seconds",
                         "cli_max_retries",
+                        "dedup_window_seconds",
+                        "container_rate_limit_count",
+                        "container_rate_limit_window_seconds",
+                        "keyword_flush_delay_lines",
                     }:
                         cast_value = int(value)
                     setattr(settings, key, cast_value)

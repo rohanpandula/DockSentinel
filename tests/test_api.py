@@ -98,3 +98,24 @@ def test_settings_test_llm_failure(tmp_path, monkeypatch):
     response = client.post("/api/settings/test-llm")
     assert response.status_code == 400
     assert response.get_json()["ok"] is False
+
+
+def test_settings_include_call_reduction_fields(tmp_path, monkeypatch):
+    app = _build_app(tmp_path, monkeypatch)
+    client = app.test_client()
+
+    response = client.get("/api/settings")
+    data = response.get_json()
+    assert "dedup_window_seconds" in data
+    assert "container_rate_limit_count" in data
+    assert "container_rate_limit_window_seconds" in data
+    assert "keyword_flush_delay_lines" in data
+
+    # Test updating new fields via API
+    response = client.put("/api/settings", json={
+        "dedup_window_seconds": 600,
+        "container_rate_limit_count": 5,
+    })
+    assert response.status_code == 200
+    assert response.get_json()["dedup_window_seconds"] == 600
+    assert response.get_json()["container_rate_limit_count"] == 5

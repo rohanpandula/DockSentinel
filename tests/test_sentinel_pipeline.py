@@ -130,6 +130,11 @@ def test_sentinel_cooldown_suppresses_duplicate_alert(tmp_path, monkeypatch):
         sentinel.telegram_notifier = DummyTelegram()
         sentinel.set_enabled(True)
 
+        # Disable chunk dedup so both calls reach the LLM and test alert cooldown.
+        settings = Settings.singleton()
+        settings.dedup_window_seconds = 0
+        db.session.commit()
+
         first = sentinel.process_chunk(
             container_id="abc123",
             container_name="postgres",
@@ -144,3 +149,63 @@ def test_sentinel_cooldown_suppresses_duplicate_alert(tmp_path, monkeypatch):
         assert first.alert_sent is True
         assert second.alert_sent is False
         assert second.alert_error == "duplicate alert suppressed by cooldown"
+
+
+def test_sentinel_dedup_skips_duplicate_chunk(tmp_path, monkeypatch):
+    """Same chunk_hash within dedup window should be skipped."""
+    app = _build_app(tmp_path, monkeypatch)
+
+    with app.app_context():
+        sentinel = app.extensions["services"]["sentinel"]
+        sentinel.llm_client = DummyLLM()
+        sentinel.telegram_notifier = DummyTelegram()
+        sentinel.set_enabled(True)
+
+        settings = Settings.singleton()
+        settings.dedup_window_seconds = 300
+        db.session.commit()
+
+        first = sentinel.process_chunk(
+            container_id="abc123",
+            container_name="postgres",
+            chunk_text="fatal error: connection refused",
+        )
+        assert first.status == "analyzed"
+
+        second = sentinel.process_chunk(
+            container_id="abc123",
+            container_name="postgres",
+            chunk_text="fatal error: connection refused",
+        )
+        assert second.status == "dedup_skipped"
+
+
+def test_sentinel_per_container_rate_limit(tmp_path, monkeypatch):
+    """Per-container rate limit should cap LLM calls."""
+    app = _build_app(tmp_path, monkeypatch)
+
+    with app.app_context():
+        sentinel = app.extensions["services"]["sentinel"]
+        sentinel.llm_client = DummyLLM()
+        sentinel.telegram_notifier = DummyTelegram()
+        sentinel.set_enabled(True)
+
+        settings = Settings.singleton()
+        settings.container_rate_limit_count = 1
+        settings.container_rate_limit_window_seconds = 3600
+        settings.dedup_window_seconds = 0  # Disable dedup to test rate limit alone
+        db.session.commit()
+
+        first = sentinel.process_chunk(
+            container_id="abc123",
+            container_name="postgres",
+            chunk_text="fatal error: connection refused",
+        )
+        assert first.status == "analyzed"
+
+        second = sentinel.process_chunk(
+            container_id="abc123",
+            container_name="postgres",
+            chunk_text="fatal error: a different error entirely",
+        )
+        assert second.status == "rate_limited"

@@ -30,6 +30,10 @@ _ALLOWED_FIELDS = {
     "alert_rate_limit_window_seconds",
     "llm_timeout_seconds",
     "llm_max_retries",
+    "dedup_window_seconds",
+    "container_rate_limit_count",
+    "container_rate_limit_window_seconds",
+    "keyword_flush_delay_lines",
 }
 
 

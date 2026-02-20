@@ -43,6 +43,10 @@
     <label class="space-y-1">Alert Limit Window Seconds<input type="number" name="alert_rate_limit_window_seconds" value="{{ settings.alert_rate_limit_window_seconds }}" class="w-full px-3 py-2 rounded bg-slate-800 border border-slate-700" /></label>
     <label class="space-y-1">LLM Timeout Seconds<input type="number" name="llm_timeout_seconds" value="{{ settings.llm_timeout_seconds }}" class="w-full px-3 py-2 rounded bg-slate-800 border border-slate-700" /></label>
     <label class="space-y-1">LLM Max Retries<input type="number" name="llm_max_retries" value="{{ settings.llm_max_retries }}" class="w-full px-3 py-2 rounded bg-slate-800 border border-slate-700" /></label>
+    <label class="space-y-1">Dedup Window Seconds<input type="number" min="0" name="dedup_window_seconds" value="{{ settings.dedup_window_seconds }}" class="w-full px-3 py-2 rounded bg-slate-800 border border-slate-700" /></label>
+    <label class="space-y-1">Container Rate Limit Count<input type="number" min="1" name="container_rate_limit_count" value="{{ settings.container_rate_limit_count }}" class="w-full px-3 py-2 rounded bg-slate-800 border border-slate-700" /></label>
+    <label class="space-y-1">Container Rate Limit Window (s)<input type="number" min="60" name="container_rate_limit_window_seconds" value="{{ settings.container_rate_limit_window_seconds }}" class="w-full px-3 py-2 rounded bg-slate-800 border border-slate-700" /></label>
+    <label class="space-y-1">Keyword Flush Delay Lines<input type="number" min="0" name="keyword_flush_delay_lines" value="{{ settings.keyword_flush_delay_lines }}" class="w-full px-3 py-2 rounded bg-slate-800 border border-slate-700" /></label>
 
     <div class="md:col-span-2 flex gap-2 pt-2">
       <button class="px-4 py-2 rounded bg-cyan-600 hover:bg-cyan-500">Save Settings</button>

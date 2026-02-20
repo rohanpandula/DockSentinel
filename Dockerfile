@@ -9,7 +9,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends curl nodejs npm \
     && rm -rf /var/lib/apt/lists/*
 
-RUN npm install -g @openai/codex@latest
+RUN npm install -g @openai/codex@latest @google/gemini-cli@latest
 
 COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
