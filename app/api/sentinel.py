@@ -10,7 +10,7 @@ bp = Blueprint("sentinel_api", __name__, url_prefix="/api")
 @bp.get("/sentinel/status")
 def get_status() -> tuple[dict, int]:
     state = SentinelState.singleton()
-    coordinator = current_app.extensions["services"]["coordinator"]
+    coordinator = current_app.extensions["services"].coordinator
     return jsonify({"state": state.as_dict(), "active_containers": coordinator.active_container_ids()}), 200
 
 
@@ -21,7 +21,7 @@ def toggle_sentinel() -> tuple[dict, int]:
     if enabled is None:
         enabled = not SentinelState.singleton().enabled
 
-    sentinel = current_app.extensions["services"]["sentinel"]
+    sentinel = current_app.extensions["services"].sentinel
     state = sentinel.set_enabled(bool(enabled))
     return jsonify({"state": state.as_dict()}), 200
 
@@ -33,7 +33,7 @@ def analyze_now() -> tuple[dict, int]:
     if not container:
         return jsonify({"error": "container is required"}), 400
 
-    sentinel = current_app.extensions["services"]["sentinel"]
+    sentinel = current_app.extensions["services"].sentinel
     try:
         event = sentinel.analyze_container_now(container)
     except Exception as exc:  # pragma: no cover - requires docker runtime

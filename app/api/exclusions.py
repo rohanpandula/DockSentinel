@@ -29,7 +29,7 @@ def create_exclusion() -> tuple[dict, int]:
     db.session.add(rule)
     db.session.commit()
 
-    current_app.extensions["services"]["coordinator"].trigger_reconcile()
+    current_app.extensions["services"].coordinator.trigger_reconcile()
     return jsonify(rule.as_dict()), 201
 
 
@@ -41,5 +41,5 @@ def delete_exclusion(rule_id: int) -> tuple[dict, int]:
 
     db.session.delete(rule)
     db.session.commit()
-    current_app.extensions["services"]["coordinator"].trigger_reconcile()
+    current_app.extensions["services"].coordinator.trigger_reconcile()
     return jsonify({"deleted": True}), 200
