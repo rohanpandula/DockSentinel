@@ -22,9 +22,9 @@ Requirements for this refactor milestone. Each maps to roadmap phases.
 
 ### Configuration
 
-- [ ] **CFG-01**: Settings god object decomposed into domain-specific config classes (LLMConfig, AlertConfig, CallReductionConfig, TelegramConfig, CLIConfig)
-- [ ] **CFG-02**: Config classes are frozen dataclasses constructed from the single Settings ORM row (DB schema unchanged)
-- [ ] **CFG-03**: Services accept domain-specific config objects instead of the raw Settings singleton
+- [x] **CFG-01**: Settings god object decomposed into domain-specific config classes (LLMConfig, AlertConfig, CallReductionConfig, TelegramConfig, CLIConfig)
+- [x] **CFG-02**: Config classes are frozen dataclasses constructed from the single Settings ORM row (DB schema unchanged)
+- [x] **CFG-03**: Services accept domain-specific config objects instead of the raw Settings singleton
 
 ### Data Access
 
@@ -109,9 +109,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DI-01 | Phase 1 | Complete |
 | DI-02 | Phase 1 | Complete |
 | DI-03 | Phase 1 | Complete |
-| CFG-01 | Phase 1 | Pending |
-| CFG-02 | Phase 1 | Pending |
-| CFG-03 | Phase 1 | Pending |
+| CFG-01 | Phase 1 | Complete |
+| CFG-02 | Phase 1 | Complete |
+| CFG-03 | Phase 1 | Complete |
 | REPO-01 | Phase 2 | Pending |
 | REPO-02 | Phase 2 | Pending |
 | REPO-03 | Phase 2 | Pending |

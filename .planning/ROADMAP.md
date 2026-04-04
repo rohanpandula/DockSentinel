@@ -12,7 +12,7 @@ This milestone transforms the DockSentinel MVP from a working-but-tangled Flask 
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Foundation** - Extract LLMCallService, wire typed ServiceContainer, decompose Settings god object
+- [x] **Phase 1: Foundation** - Extract LLMCallService, wire typed ServiceContainer, decompose Settings god object (completed 2026-04-04)
 - [ ] **Phase 2: Repository Layer** - Centralize all ORM queries behind typed repository classes
 - [ ] **Phase 3: Alembic Migration Infrastructure** - Replace hardcoded ALTER TABLE with versioned Alembic migrations
 - [ ] **Phase 4: Service Decomposition and Blueprint** - Extract AlertService, TelegramAlertStrategy, and web Blueprint
@@ -34,7 +34,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 Plans:
 - [x] 01-01-PLAN.md — Extract LLMCallService, wire into sentinel/briefing/settings API, update test injection
 - [x] 01-02-PLAN.md — Create ServiceContainer dataclass, migrate all 23 string-key access sites
-- [ ] 01-03-PLAN.md — Create five frozen config dataclasses, update LLMCallService to accept LLMConfig
+- [x] 01-03-PLAN.md — Create five frozen config dataclasses, update LLMCallService to accept LLMConfig
 
 ### Phase 2: Repository Layer
 **Goal**: All SQLAlchemy ORM queries are encapsulated in named repository classes — no service or route handler contains inline query calls
@@ -87,7 +87,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 2/3 | In Progress|  |
+| 1. Foundation | 3/3 | Complete   | 2026-04-04 |
 | 2. Repository Layer | 0/TBD | Not started | - |
 | 3. Alembic Migration Infrastructure | 0/TBD | Not started | - |
 | 4. Service Decomposition and Blueprint | 0/TBD | Not started | - |
