@@ -9,14 +9,15 @@ from sqlalchemy import and_
 
 from app.extensions import db
 from app.models import AnalysisEvent, PromptKey, PromptTemplate, SentinelState, Settings
+from app.services.llm_call import LLMCallService
 from app.services.log_buffer import LogBuffer
 from app.services.prefilter import Prefilter
 from app.time_utils import utcnow_naive
 
 
 class SentinelService:
-    def __init__(self, llm_client: Any, verdict_parser: Any, telegram_notifier: Any) -> None:
-        self.llm_client = llm_client
+    def __init__(self, llm_call_service: LLMCallService, verdict_parser: Any, telegram_notifier: Any) -> None:
+        self.llm_call_service = llm_call_service
         self.verdict_parser = verdict_parser
         self.telegram_notifier = telegram_notifier
         self.log_buffer = LogBuffer(16000, 4000, 600)
@@ -88,38 +89,6 @@ class SentinelService:
         state.last_error = message
         state.runtime_status = "degraded"
         db.session.commit()
-
-    def _call_llm(self, *, settings: Settings, messages: list[dict[str, str]], max_tokens: int):
-        transport = (settings.llm_transport or "api").strip().lower()
-        timeout_seconds = settings.llm_timeout_seconds
-        retries = settings.llm_max_retries
-        if transport == "cli":
-            timeout_seconds = settings.cli_timeout_seconds
-            retries = settings.cli_max_retries
-
-        if hasattr(self.llm_client, "complete"):
-            return self.llm_client.complete(
-                transport=transport,
-                cli_backend=settings.cli_backend,
-                base_url=settings.llm_base_url,
-                api_key=settings.llm_api_key,
-                model=settings.llm_model,
-                messages=messages,
-                timeout_seconds=timeout_seconds,
-                max_retries=retries,
-                max_tokens=max_tokens,
-            )
-
-        # Compatibility path for test doubles that only implement chat_completion.
-        return self.llm_client.chat_completion(
-            base_url=settings.llm_base_url,
-            api_key=settings.llm_api_key,
-            model=settings.llm_model,
-            messages=messages,
-            timeout_seconds=timeout_seconds,
-            max_retries=retries,
-            max_tokens=max_tokens,
-        )
 
     def _event_base(
         self,
@@ -260,10 +229,18 @@ class SentinelService:
         ]
 
         try:
-            llm_result = self._call_llm(
-                settings=settings,
+            llm_result = self.llm_call_service.call(
                 messages=messages,
                 max_tokens=settings.reserved_output_tokens,
+                base_url=settings.llm_base_url,
+                api_key=settings.llm_api_key,
+                model=settings.llm_model,
+                transport=(settings.llm_transport or "api").strip().lower(),
+                cli_backend=settings.cli_backend,
+                timeout_seconds=settings.llm_timeout_seconds,
+                max_retries=settings.llm_max_retries,
+                cli_timeout_seconds=settings.cli_timeout_seconds,
+                cli_max_retries=settings.cli_max_retries,
             )
         except Exception as exc:  # pragma: no cover - network dependent
             event.status = "llm_error"

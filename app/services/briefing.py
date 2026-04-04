@@ -2,16 +2,16 @@ from __future__ import annotations
 
 from collections import Counter
 from datetime import timedelta
-from typing import Any
 
 from app.extensions import db
 from app.models import AnalysisEvent, DailyReport, PromptKey, PromptTemplate, Settings
+from app.services.llm_call import LLMCallService
 from app.time_utils import utcnow_naive
 
 
 class BriefingService:
-    def __init__(self, llm_client: Any) -> None:
-        self.llm_client = llm_client
+    def __init__(self, llm_call_service: LLMCallService) -> None:
+        self.llm_call_service = llm_call_service
 
     def _settings(self) -> Settings:
         return Settings.singleton()
@@ -21,39 +21,6 @@ class BriefingService:
         if prompt is None:
             raise RuntimeError(f"prompt not found for key {key.value}")
         return prompt
-
-    def _call_llm(self, *, settings: Settings, messages: list[dict[str, str]], max_tokens: int):
-        transport = (settings.llm_transport or "api").strip().lower()
-        timeout_seconds = settings.llm_timeout_seconds
-        retries = settings.llm_max_retries
-        if transport == "cli":
-            timeout_seconds = settings.cli_timeout_seconds
-            retries = settings.cli_max_retries
-
-        if hasattr(self.llm_client, "complete"):
-            return self.llm_client.complete(
-                transport=transport,
-                cli_backend=settings.cli_backend,
-                base_url=settings.llm_base_url,
-                api_key=settings.llm_api_key,
-                model=settings.llm_model,
-                messages=messages,
-                timeout_seconds=timeout_seconds,
-                max_retries=retries,
-                max_tokens=max_tokens,
-                temperature=0.2,
-            )
-
-        return self.llm_client.chat_completion(
-            base_url=settings.llm_base_url,
-            api_key=settings.llm_api_key,
-            model=settings.llm_model,
-            messages=messages,
-            timeout_seconds=timeout_seconds,
-            max_retries=retries,
-            max_tokens=max_tokens,
-            temperature=0.2,
-        )
 
     def _fallback_report(self, events: list[AnalysisEvent], period_start: datetime, period_end: datetime) -> str:
         classification_counts = Counter(e.classification or "unknown" for e in events)
@@ -121,10 +88,19 @@ class BriefingService:
         error_text: str | None = None
 
         try:
-            response = self._call_llm(
-                settings=settings,
+            response = self.llm_call_service.call(
                 messages=messages,
                 max_tokens=1200,
+                base_url=settings.llm_base_url,
+                api_key=settings.llm_api_key,
+                model=settings.llm_model,
+                transport=(settings.llm_transport or "api").strip().lower(),
+                cli_backend=settings.cli_backend,
+                timeout_seconds=settings.llm_timeout_seconds,
+                max_retries=settings.llm_max_retries,
+                cli_timeout_seconds=settings.cli_timeout_seconds,
+                cli_max_retries=settings.cli_max_retries,
+                temperature=0.2,
             )
             markdown = response.content
             model_name = response.model

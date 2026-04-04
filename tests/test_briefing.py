@@ -52,8 +52,8 @@ def test_generate_briefing(tmp_path, monkeypatch):
         )
         db.session.commit()
 
-        briefing = app.extensions["services"]["briefing"]
-        briefing.llm_client = DummyLLM()
+        briefing = app.extensions["services"].briefing
+        briefing.llm_call_service._client = DummyLLM()
         report = briefing.generate_report()
 
         assert report.id is not None
@@ -64,8 +64,8 @@ def test_generate_briefing_fallback_on_llm_error(tmp_path, monkeypatch):
     app = _build_app(tmp_path, monkeypatch)
 
     with app.app_context():
-        briefing = app.extensions["services"]["briefing"]
-        briefing.llm_client = FailingLLM()
+        briefing = app.extensions["services"].briefing
+        briefing.llm_call_service._client = FailingLLM()
         report = briefing.generate_report()
 
         assert report.status == "llm_error"
