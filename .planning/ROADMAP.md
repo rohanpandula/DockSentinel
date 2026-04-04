@@ -32,8 +32,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 3 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — Extract LLMCallService, wire into sentinel/briefing/settings API, update test injection
-- [ ] 01-02-PLAN.md — Create ServiceContainer dataclass, migrate all 23 string-key access sites
+- [x] 01-01-PLAN.md — Extract LLMCallService, wire into sentinel/briefing/settings API, update test injection
+- [x] 01-02-PLAN.md — Create ServiceContainer dataclass, migrate all 23 string-key access sites
 - [ ] 01-03-PLAN.md — Create five frozen config dataclasses, update LLMCallService to accept LLMConfig
 
 ### Phase 2: Repository Layer

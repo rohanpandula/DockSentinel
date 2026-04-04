@@ -9,8 +9,8 @@ Requirements for this refactor milestone. Each maps to roadmap phases.
 
 ### Service Extraction
 
-- [ ] **SRVC-01**: LLM invocation logic consolidated into a single LLMCallService class, eliminating duplication across sentinel.py, briefing.py, and api/settings.py
-- [ ] **SRVC-02**: SentinelService and BriefingService use the shared LLMCallService instead of private _call_llm methods
+- [x] **SRVC-01**: LLM invocation logic consolidated into a single LLMCallService class, eliminating duplication across sentinel.py, briefing.py, and api/settings.py
+- [x] **SRVC-02**: SentinelService and BriefingService use the shared LLMCallService instead of private _call_llm methods
 - [ ] **SRVC-03**: AlertService extracted from SentinelService with AlertStrategy protocol for transport abstraction
 - [ ] **SRVC-04**: TelegramAlertStrategy implements the AlertStrategy protocol, replacing hardcoded Telegram calls in SentinelService
 
@@ -102,8 +102,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SRVC-01 | Phase 1 | Pending |
-| SRVC-02 | Phase 1 | Pending |
+| SRVC-01 | Phase 1 | Complete |
+| SRVC-02 | Phase 1 | Complete |
 | SRVC-03 | Phase 4 | Pending |
 | SRVC-04 | Phase 4 | Pending |
 | DI-01 | Phase 1 | Pending |
