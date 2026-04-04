@@ -24,14 +24,14 @@ Every refactoring change must keep the existing API contract intact (all endpoin
 - ✓ SQLite persistence with singleton settings pattern — existing
 - ✓ RuntimeCoordinator with file-lock singleton enforcement — existing
 - ✓ Docker Compose deployment — existing
+- ✓ Single LLMCallService for all LLM invocation — Phase 1
+- ✓ Typed ServiceContainer for dependency injection — Phase 1
+- ✓ Domain-specific frozen config dataclasses (LLMConfig, AlertConfig, CallReductionConfig, TelegramConfig, CLIConfig) — Phase 1
 
 ### Active
 
-- [ ] Extract duplicate LLM call logic into a single LLMCallService
-- [ ] Break up Settings god object into domain-specific config classes (LLMConfig, AlertConfig, CallReductionConfig, TelegramConfig, CLIConfig)
 - [ ] Repository pattern for DB access (AnalysisEvent, Settings, Prompts, Reports)
 - [ ] Move web routes out of app factory into blueprints; replace raw SQL migrations with Alembic
-- [ ] Service dependency injection via typed container/dataclass (replace app.extensions["services"] dict)
 - [ ] API pagination and Pydantic request/response validation on all list endpoints
 - [ ] Refactor SentinelService into composable pipeline stages (log buffering, LLM calls, dedup, rate limiting, alerts)
 - [ ] Create AlertStrategy abstraction (prep for Slack/email/Discord)
@@ -108,4 +108,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-04 after initialization*
+*Last updated: 2026-04-04 after Phase 1 completion*
