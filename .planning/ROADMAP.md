@@ -29,7 +29,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. `app.extensions["services"]` is backed by a typed `ServiceContainer` dataclass — accessing a service via a misspelled string key raises an `AttributeError` at attribute access time, not a `KeyError` at runtime
   3. Five domain-specific frozen config dataclasses (`LLMConfig`, `AlertConfig`, `CallReductionConfig`, `TelegramConfig`, `CLIConfig`) exist and services accept them instead of the raw Settings singleton
   4. All 31 existing tests pass with no modifications to test logic
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — Extract LLMCallService, wire into sentinel/briefing/settings API, update test injection
+- [ ] 01-02-PLAN.md — Create ServiceContainer dataclass, migrate all 23 string-key access sites
+- [ ] 01-03-PLAN.md — Create five frozen config dataclasses, update LLMCallService to accept LLMConfig
 
 ### Phase 2: Repository Layer
 **Goal**: All SQLAlchemy ORM queries are encapsulated in named repository classes — no service or route handler contains inline query calls
@@ -82,7 +87,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 0/TBD | Not started | - |
+| 1. Foundation | 0/3 | Not started | - |
 | 2. Repository Layer | 0/TBD | Not started | - |
 | 3. Alembic Migration Infrastructure | 0/TBD | Not started | - |
 | 4. Service Decomposition and Blueprint | 0/TBD | Not started | - |
