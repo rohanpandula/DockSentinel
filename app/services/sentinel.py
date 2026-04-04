@@ -7,6 +7,7 @@ from typing import Any
 import docker
 from sqlalchemy import and_
 
+from app.config_objects import LLMConfig
 from app.extensions import db
 from app.models import AnalysisEvent, PromptKey, PromptTemplate, SentinelState, Settings
 from app.services.llm_call import LLMCallService
@@ -230,17 +231,9 @@ class SentinelService:
 
         try:
             llm_result = self.llm_call_service.call(
+                config=LLMConfig.from_settings(settings),
                 messages=messages,
                 max_tokens=settings.reserved_output_tokens,
-                base_url=settings.llm_base_url,
-                api_key=settings.llm_api_key,
-                model=settings.llm_model,
-                transport=(settings.llm_transport or "api").strip().lower(),
-                cli_backend=settings.cli_backend,
-                timeout_seconds=settings.llm_timeout_seconds,
-                max_retries=settings.llm_max_retries,
-                cli_timeout_seconds=settings.cli_timeout_seconds,
-                cli_max_retries=settings.cli_max_retries,
             )
         except Exception as exc:  # pragma: no cover - network dependent
             event.status = "llm_error"

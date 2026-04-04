@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.config_objects import LLMConfig
 from app.services.llm_client import LLMResult
 
 
@@ -12,28 +13,20 @@ class LLMCallService:
     def call(
         self,
         *,
+        config: LLMConfig,
         messages: list[dict[str, str]],
         max_tokens: int,
-        base_url: str,
-        api_key: str,
-        model: str,
-        transport: str,
-        cli_backend: str,
-        timeout_seconds: int,
-        max_retries: int,
-        cli_timeout_seconds: int,
-        cli_max_retries: int,
         temperature: float | None = None,
     ) -> LLMResult:
-        resolved_timeout = cli_timeout_seconds if transport == "cli" else timeout_seconds
-        resolved_retries = cli_max_retries if transport == "cli" else max_retries
+        resolved_timeout = config.cli_timeout_seconds if config.transport == "cli" else config.timeout_seconds
+        resolved_retries = config.cli_max_retries if config.transport == "cli" else config.max_retries
 
         call_kwargs: dict[str, Any] = dict(
-            transport=transport,
-            cli_backend=cli_backend,
-            base_url=base_url,
-            api_key=api_key,
-            model=model,
+            transport=config.transport,
+            cli_backend=config.cli_backend,
+            base_url=config.base_url,
+            api_key=config.api_key,
+            model=config.model,
             messages=messages,
             timeout_seconds=resolved_timeout,
             max_retries=resolved_retries,
