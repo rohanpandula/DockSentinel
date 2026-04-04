@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v0.2
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-foundation-01-PLAN.md
-last_updated: "2026-04-04T23:26:08.900Z"
+stopped_at: Completed 01-02-PLAN.md
+last_updated: "2026-04-04T23:26:22.793Z"
 last_activity: 2026-04-04
 progress:
   total_phases: 5
@@ -53,6 +53,7 @@ Progress: [░░░░░░░░░░] 0%
 
 *Updated after each plan completion*
 | Phase 01-foundation P01 | 180 | 2 tasks | 7 files |
+| Phase 01 P02 | 5 | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -64,6 +65,8 @@ Recent decisions affecting current work:
 - Initialization: Keep Flask (no FastAPI), SQLite stays, Alembic for migrations, repository pattern for DB access, Pydantic v2 for request/response, Strategy pattern for alerts
 - [Phase 01-foundation]: temperature=None omits kwarg from LLMClient call so its default (0.1) is preserved
 - [Phase 01-foundation]: test-connection endpoint hardcodes retries=0 (not from settings) for both API and CLI transports
+- [Phase 01]: ServiceContainer uses _KEY_MAP telegram->telegram_notifier to bridge dict key rename while migrating call sites
+- [Phase 01]: llm_call attribute in ServiceContainer populated by LLMCallService from plan 01; parallel execution worked cleanly
 
 ### Pending Todos
 
@@ -76,6 +79,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-04T23:26:00.219Z
-Stopped at: Completed 01-foundation-01-PLAN.md
+Last session: 2026-04-04T23:26:22.791Z
+Stopped at: Completed 01-02-PLAN.md
 Resume file: None

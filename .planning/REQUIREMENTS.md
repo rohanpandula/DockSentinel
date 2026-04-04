@@ -16,9 +16,9 @@ Requirements for this refactor milestone. Each maps to roadmap phases.
 
 ### Dependency Injection
 
-- [ ] **DI-01**: Typed ServiceContainer dataclass replaces app.extensions["services"] string-keyed dict
-- [ ] **DI-02**: All route handlers and services access dependencies via typed ServiceContainer attributes
-- [ ] **DI-03**: Test fixtures inject dependencies via the typed ServiceContainer (shim maintained during transition)
+- [x] **DI-01**: Typed ServiceContainer dataclass replaces app.extensions["services"] string-keyed dict
+- [x] **DI-02**: All route handlers and services access dependencies via typed ServiceContainer attributes
+- [x] **DI-03**: Test fixtures inject dependencies via the typed ServiceContainer (shim maintained during transition)
 
 ### Configuration
 
@@ -106,9 +106,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SRVC-02 | Phase 1 | Complete |
 | SRVC-03 | Phase 4 | Pending |
 | SRVC-04 | Phase 4 | Pending |
-| DI-01 | Phase 1 | Pending |
-| DI-02 | Phase 1 | Pending |
-| DI-03 | Phase 1 | Pending |
+| DI-01 | Phase 1 | Complete |
+| DI-02 | Phase 1 | Complete |
+| DI-03 | Phase 1 | Complete |
 | CFG-01 | Phase 1 | Pending |
 | CFG-02 | Phase 1 | Pending |
 | CFG-03 | Phase 1 | Pending |
