@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import hashlib
 from datetime import timedelta
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 import docker
-from sqlalchemy import and_
 
 from app.config_objects import LLMConfig
 from app.extensions import db
@@ -15,12 +14,28 @@ from app.services.log_buffer import LogBuffer
 from app.services.prefilter import Prefilter
 from app.time_utils import utcnow_naive
 
+if TYPE_CHECKING:
+    from app.repositories.analysis_events import AnalysisEventRepository
+    from app.repositories.exclusions import ExclusionRepository
+    from app.repositories.prompts import PromptRepository
+
 
 class SentinelService:
-    def __init__(self, llm_call_service: LLMCallService, verdict_parser: Any, telegram_notifier: Any) -> None:
+    def __init__(
+        self,
+        llm_call_service: LLMCallService,
+        verdict_parser: Any,
+        telegram_notifier: Any,
+        event_repo: "AnalysisEventRepository",
+        prompt_repo: "PromptRepository",
+        exclusion_repo: "ExclusionRepository",
+    ) -> None:
         self.llm_call_service = llm_call_service
         self.verdict_parser = verdict_parser
         self.telegram_notifier = telegram_notifier
+        self.event_repo = event_repo
+        self.prompt_repo = prompt_repo
+        self.exclusion_repo = exclusion_repo
         self.log_buffer = LogBuffer(16000, 4000, 600)
 
     def _settings(self) -> Settings:
@@ -70,15 +85,13 @@ class SentinelService:
             db.session.commit()
 
     def is_excluded_container(self, container_name: str) -> bool:
-        from app.models import ExclusionRule
-
-        for row in ExclusionRule.query.filter_by(enabled=True).all():
+        for row in self.exclusion_repo.list_enabled():
             if row.container_pattern.lower() in container_name.lower():
                 return True
         return False
 
     def _prompt(self, key: PromptKey) -> PromptTemplate:
-        template = PromptTemplate.query.filter_by(key=key.value).first()
+        template = self.prompt_repo.get_by_key(key)
         if template is None:
             raise RuntimeError(f"prompt not found for key {key.value}")
         return template
@@ -113,28 +126,17 @@ class SentinelService:
 
     def _record_excluded_event(self, container_id: str, container_name: str) -> None:
         cutoff = utcnow_naive() - timedelta(minutes=5)
-        already_recorded = (
-            AnalysisEvent.query.filter(
-                and_(
-                    AnalysisEvent.container_id == container_id,
-                    AnalysisEvent.status == "excluded",
-                    AnalysisEvent.created_at >= cutoff,
-                )
-            )
-            .order_by(AnalysisEvent.created_at.desc())
-            .first()
-        )
+        already_recorded = self.event_repo.find_recent_excluded(container_id, cutoff)
         if already_recorded:
             return
 
-        db.session.add(
-            AnalysisEvent(
-                container_id=container_id,
-                container_name=container_name,
-                status="excluded",
-                classification=None,
-            )
+        event = AnalysisEvent(
+            container_id=container_id,
+            container_name=container_name,
+            status="excluded",
+            classification=None,
         )
+        self.event_repo.add(event)
         db.session.commit()
 
     def handle_log_line(self, container_id: str, container_name: str, line: str, flush_only: bool = False) -> None:
@@ -175,7 +177,7 @@ class SentinelService:
         if not matched_keywords:
             event.status = "skipped"
             event.classification = "noise"
-            db.session.add(event)
+            self.event_repo.add(event)
             db.session.commit()
             return event
 
@@ -183,17 +185,11 @@ class SentinelService:
         dedup_window = settings.dedup_window_seconds
         if dedup_window > 0:
             cutoff = utcnow_naive() - timedelta(seconds=dedup_window)
-            already_analyzed = AnalysisEvent.query.filter(
-                and_(
-                    AnalysisEvent.chunk_hash == event.chunk_hash,
-                    AnalysisEvent.status.notin_(["skipped"]),
-                    AnalysisEvent.created_at >= cutoff,
-                )
-            ).first()
+            already_analyzed = self.event_repo.find_duplicate_chunk(event.chunk_hash, cutoff)
             if already_analyzed:
                 event.status = "dedup_skipped"
                 event.classification = "noise"
-                db.session.add(event)
+                self.event_repo.add(event)
                 db.session.commit()
                 return event
 
@@ -202,17 +198,11 @@ class SentinelService:
         container_window = settings.container_rate_limit_window_seconds
         if container_limit > 0 and container_window > 0:
             window_start = utcnow_naive() - timedelta(seconds=container_window)
-            recent_calls = AnalysisEvent.query.filter(
-                and_(
-                    AnalysisEvent.container_id == container_id,
-                    AnalysisEvent.status.in_(["analyzed", "parse_error", "llm_error"]),
-                    AnalysisEvent.created_at >= window_start,
-                )
-            ).count()
+            recent_calls = self.event_repo.count_recent_by_container(container_id, window_start)
             if recent_calls >= container_limit:
                 event.status = "rate_limited"
                 event.classification = "noise"
-                db.session.add(event)
+                self.event_repo.add(event)
                 db.session.commit()
                 return event
 
@@ -238,7 +228,7 @@ class SentinelService:
         except Exception as exc:  # pragma: no cover - network dependent
             event.status = "llm_error"
             event.llm_error = str(exc)
-            db.session.add(event)
+            self.event_repo.add(event)
             db.session.commit()
             self._record_llm_failure(str(exc))
             return event
@@ -251,7 +241,7 @@ class SentinelService:
         if verdict is None:
             event.status = "parse_error"
             event.parse_error = parse_error
-            db.session.add(event)
+            self.event_repo.add(event)
             db.session.commit()
             return event
 
@@ -267,7 +257,7 @@ class SentinelService:
             event.alert_sent = sent
             event.alert_error = alert_error
 
-        db.session.add(event)
+        self.event_repo.add(event)
         db.session.commit()
         self.mark_runtime_running()
         return event
@@ -276,24 +266,12 @@ class SentinelService:
         settings = self._settings()
 
         cooldown_since = utcnow_naive() - timedelta(minutes=settings.alert_cooldown_minutes)
-        duplicate = (
-            AnalysisEvent.query.filter(
-                and_(
-                    AnalysisEvent.chunk_hash == event.chunk_hash,
-                    AnalysisEvent.alert_sent.is_(True),
-                    AnalysisEvent.created_at >= cooldown_since,
-                )
-            )
-            .order_by(AnalysisEvent.created_at.desc())
-            .first()
-        )
+        duplicate = self.event_repo.find_alert_duplicate(event.chunk_hash, cooldown_since)
         if duplicate:
             return False, "duplicate alert suppressed by cooldown"
 
         window_since = utcnow_naive() - timedelta(seconds=settings.alert_rate_limit_window_seconds)
-        recent_alerts = AnalysisEvent.query.filter(
-            and_(AnalysisEvent.alert_sent.is_(True), AnalysisEvent.created_at >= window_since)
-        ).count()
+        recent_alerts = self.event_repo.count_recent_alerts(window_since)
 
         if recent_alerts >= settings.alert_rate_limit_count:
             return False, "global rate limit exceeded"

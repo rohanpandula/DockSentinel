@@ -323,7 +323,14 @@ def create_app() -> Flask:
     prompt_repo = PromptRepository()
     report_repo = ReportRepository()
     exclusion_repo = ExclusionRepository()
-    sentinel_service = SentinelService(llm_call_service=llm_call_service, verdict_parser=verdict_parser, telegram_notifier=telegram_notifier)
+    sentinel_service = SentinelService(
+        llm_call_service=llm_call_service,
+        verdict_parser=verdict_parser,
+        telegram_notifier=telegram_notifier,
+        event_repo=event_repo,
+        prompt_repo=prompt_repo,
+        exclusion_repo=exclusion_repo,
+    )
     briefing_service = BriefingService(llm_call_service=llm_call_service)
     coordinator = RuntimeCoordinator(app=app, sentinel_service=sentinel_service, briefing_service=briefing_service)
 
