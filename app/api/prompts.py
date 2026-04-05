@@ -1,22 +1,23 @@
 from __future__ import annotations
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 
 from app.extensions import db
-from app.models import PromptTemplate
 
 bp = Blueprint("prompts_api", __name__, url_prefix="/api")
 
 
 @bp.get("/prompts")
 def list_prompts() -> tuple[dict, int]:
-    prompts = PromptTemplate.query.order_by(PromptTemplate.key.asc()).all()
+    container = current_app.extensions["services"]
+    prompts = container.prompt_repo.list_all()
     return jsonify({"items": [prompt.as_dict() for prompt in prompts]}), 200
 
 
 @bp.put("/prompts/<string:key>")
 def update_prompt(key: str) -> tuple[dict, int]:
-    prompt = PromptTemplate.query.filter_by(key=key).first()
+    container = current_app.extensions["services"]
+    prompt = container.prompt_repo.get_by_key(key)
     if prompt is None:
         return jsonify({"error": "prompt not found"}), 404
 
@@ -34,7 +35,8 @@ def update_prompt(key: str) -> tuple[dict, int]:
 
 @bp.post("/prompts/<string:key>/reset")
 def reset_prompt(key: str) -> tuple[dict, int]:
-    prompt = PromptTemplate.query.filter_by(key=key).first()
+    container = current_app.extensions["services"]
+    prompt = container.prompt_repo.get_by_key(key)
     if prompt is None:
         return jsonify({"error": "prompt not found"}), 404
 
