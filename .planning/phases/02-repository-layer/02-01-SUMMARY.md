@@ -116,6 +116,12 @@ None - no external service configuration required.
 - Plan 02-03 can migrate all API route inline queries to repository method calls
 - No blockers
 
+## Self-Check: PASSED
+
+- All 8 required files exist (6 repository files + container.py + __init__.py)
+- Task commits verified: e596e1b (task 1), efe5f13 (task 2)
+- All 31 tests pass: `31 passed in 3.79s`
+
 ---
 *Phase: 02-repository-layer*
 *Completed: 2026-04-05*
