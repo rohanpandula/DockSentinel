@@ -47,7 +47,7 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 02-01-PLAN.md — Create 5 repository classes, extend ServiceContainer, wire in create_app()
+- [x] 02-01-PLAN.md — Create 5 repository classes, extend ServiceContainer, wire in create_app()
 - [ ] 02-02-PLAN.md — Migrate SentinelService and BriefingService to use injected repositories
 - [ ] 02-03-PLAN.md — Migrate API routes and web routes to use repositories via container
 
@@ -93,7 +93,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation | 3/3 | Complete   | 2026-04-04 |
-| 2. Repository Layer | 0/3 | Planned    |  |
+| 2. Repository Layer | 1/3 | In Progress|  |
 | 3. Alembic Migration Infrastructure | 0/TBD | Not started | - |
 | 4. Service Decomposition and Blueprint | 0/TBD | Not started | - |
 | 5. API Quality and Hardening | 0/TBD | Not started | - |
