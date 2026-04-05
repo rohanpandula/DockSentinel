@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v0.2
 milestone_name: milestone
-status: verifying
-stopped_at: Completed 02-03-PLAN.md
-last_updated: "2026-04-05T01:51:27.281Z"
-last_activity: 2026-04-04
+status: executing
+stopped_at: "Completed 02-02-PLAN.md"
+last_updated: "2026-04-05T01:49:28Z"
+last_activity: 2026-04-05 -- Plan 02-02 complete: SentinelService + BriefingService repo injection
 progress:
   total_phases: 5
   completed_phases: 1
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-04)
 
 **Core value:** Every refactoring change must keep the existing API contract intact and all 31 tests passing — structure improves without breaking behavior.
-**Current focus:** Phase 01 — foundation
+**Current focus:** Phase 02 — repository-layer
 
 ## Current Position
 
-Phase: 2
-Plan: Not started
-Status: Phase complete — ready for verification
-Last activity: 2026-04-04
+Phase: 02 (repository-layer) — EXECUTING
+Plan: 2 of 3 (complete), advancing to Plan 3
+Status: Executing Phase 02
+Last activity: 2026-04-05 -- Plan 02-02 complete: SentinelService + BriefingService repo injection
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -55,8 +55,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 01-foundation P01 | 180 | 2 tasks | 7 files |
 | Phase 01 P02 | 5 | 2 tasks | 9 files |
 | Phase 01 P03 | 4 | 2 tasks | 5 files |
-| Phase 02-repository-layer P01 | 15 | 2 tasks | 8 files |
-| Phase 02-repository-layer P03 | 15 | 2 tasks | 6 files |
+| Phase 02 P02 | 17 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -71,13 +70,10 @@ Recent decisions affecting current work:
 - [Phase 01]: ServiceContainer uses _KEY_MAP telegram->telegram_notifier to bridge dict key rename while migrating call sites
 - [Phase 01]: llm_call attribute in ServiceContainer populated by LLMCallService from plan 01; parallel execution worked cleanly
 - [Phase 01-foundation]: TYPE_CHECKING guard on Settings import in config_objects.py prevents circular import
+- [Phase 02-02]: SentinelService constructor extended to 6 params; TYPE_CHECKING guards used for repo type hints to avoid circular imports
+- [Phase 02-02]: BriefingService retains db import because db.session.commit() remains service-owned per D-01; only db.session.add(report) moved to repo
 - [Phase 01-foundation]: LLMConfig.from_settings normalizes transport centrally — (or 'api').strip().lower() no longer duplicated at call sites
 - [Phase 01-foundation]: test-connection endpoint uses dataclasses.replace to override retries=0, preserving original zero-retries behavior
-- [Phase 02-01]: TYPE_CHECKING guard on repo imports in container.py prevents circular imports at runtime
-- [Phase 02-01]: No db.session.commit() in any repo except SettingsRepository.save() — callers own transactions
-- [Phase 02-01]: No generic repository base class — each repo has only domain-specific query methods
-- [Phase 02-03]: Web routes retain db.session.commit() directly — repositories own queries, callers own transaction boundaries
-- [Phase 02-03]: AnalysisEvent and DailyReport removed from app/__init__.py model imports after route migration to repos
 
 ### Pending Todos
 
@@ -90,6 +86,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-05T01:51:27.279Z
-Stopped at: Completed 02-03-PLAN.md
-Resume file: None
+Last session: 2026-04-05T01:49:28Z
+Stopped at: "Completed 02-02-PLAN.md"
+Resume file: .planning/phases/02-repository-layer/02-03-PLAN.md
