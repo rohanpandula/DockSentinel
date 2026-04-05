@@ -331,7 +331,12 @@ def create_app() -> Flask:
         prompt_repo=prompt_repo,
         exclusion_repo=exclusion_repo,
     )
-    briefing_service = BriefingService(llm_call_service=llm_call_service)
+    briefing_service = BriefingService(
+        llm_call_service=llm_call_service,
+        event_repo=event_repo,
+        prompt_repo=prompt_repo,
+        report_repo=report_repo,
+    )
     coordinator = RuntimeCoordinator(app=app, sentinel_service=sentinel_service, briefing_service=briefing_service)
 
     app.extensions["services"] = ServiceContainer(

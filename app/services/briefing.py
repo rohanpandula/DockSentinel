@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 from datetime import timedelta
+from typing import TYPE_CHECKING
 
 from app.config_objects import LLMConfig
 from app.extensions import db
@@ -9,16 +10,30 @@ from app.models import AnalysisEvent, DailyReport, PromptKey, PromptTemplate, Se
 from app.services.llm_call import LLMCallService
 from app.time_utils import utcnow_naive
 
+if TYPE_CHECKING:
+    from app.repositories.analysis_events import AnalysisEventRepository
+    from app.repositories.prompts import PromptRepository
+    from app.repositories.reports import ReportRepository
+
 
 class BriefingService:
-    def __init__(self, llm_call_service: LLMCallService) -> None:
+    def __init__(
+        self,
+        llm_call_service: LLMCallService,
+        event_repo: "AnalysisEventRepository",
+        prompt_repo: "PromptRepository",
+        report_repo: "ReportRepository",
+    ) -> None:
         self.llm_call_service = llm_call_service
+        self.event_repo = event_repo
+        self.prompt_repo = prompt_repo
+        self.report_repo = report_repo
 
     def _settings(self) -> Settings:
         return Settings.singleton()
 
     def _prompt(self, key: PromptKey) -> PromptTemplate:
-        prompt = PromptTemplate.query.filter_by(key=key.value).first()
+        prompt = self.prompt_repo.get_by_key(key)
         if prompt is None:
             raise RuntimeError(f"prompt not found for key {key.value}")
         return prompt
@@ -55,11 +70,7 @@ class BriefingService:
         period_end = now
         period_start = now - timedelta(hours=24)
 
-        events = (
-            AnalysisEvent.query.filter(AnalysisEvent.created_at >= period_start)
-            .order_by(AnalysisEvent.created_at.asc())
-            .all()
-        )
+        events = self.event_repo.get_for_window(period_start)
 
         settings = self._settings()
         nightly_system = self._prompt(PromptKey.NIGHTLY_SYSTEM)
@@ -111,6 +122,6 @@ class BriefingService:
             prompt_version=nightly_report.version,
             error=error_text,
         )
-        db.session.add(report)
+        self.report_repo.add(report)
         db.session.commit()
         return report
