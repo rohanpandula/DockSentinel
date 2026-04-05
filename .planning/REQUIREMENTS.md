@@ -28,8 +28,8 @@ Requirements for this refactor milestone. Each maps to roadmap phases.
 
 ### Data Access
 
-- [ ] **REPO-01**: AnalysisEventRepository encapsulates all AnalysisEvent ORM queries currently scattered across services and routes
-- [ ] **REPO-02**: SettingsRepository, PromptRepository, ReportRepository, ExclusionRepository created for remaining models
+- [x] **REPO-01**: AnalysisEventRepository encapsulates all AnalysisEvent ORM queries currently scattered across services and routes
+- [x] **REPO-02**: SettingsRepository, PromptRepository, ReportRepository, ExclusionRepository created for remaining models
 - [ ] **REPO-03**: No service or route handler contains inline SQLAlchemy query calls after repository migration
 
 ### Migration Infrastructure
@@ -112,8 +112,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CFG-01 | Phase 1 | Complete |
 | CFG-02 | Phase 1 | Complete |
 | CFG-03 | Phase 1 | Complete |
-| REPO-01 | Phase 2 | Pending |
-| REPO-02 | Phase 2 | Pending |
+| REPO-01 | Phase 2 | Complete |
+| REPO-02 | Phase 2 | Complete |
 | REPO-03 | Phase 2 | Pending |
 | MIG-01 | Phase 3 | Pending |
 | MIG-02 | Phase 3 | Pending |

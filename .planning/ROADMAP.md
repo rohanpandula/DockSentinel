@@ -93,7 +93,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation | 3/3 | Complete   | 2026-04-04 |
-| 2. Repository Layer | 0/3 | Planning complete | - |
+| 2. Repository Layer | 0/3 | Planned    |  |
 | 3. Alembic Migration Infrastructure | 0/TBD | Not started | - |
 | 4. Service Decomposition and Blueprint | 0/TBD | Not started | - |
 | 5. API Quality and Hardening | 0/TBD | Not started | - |
