@@ -1,7 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.repositories.analysis_events import AnalysisEventRepository
+    from app.repositories.exclusions import ExclusionRepository
+    from app.repositories.prompts import PromptRepository
+    from app.repositories.reports import ReportRepository
+    from app.repositories.settings import SettingsRepository
 
 _KEY_MAP: dict[str, str] = {
     "telegram": "telegram_notifier",
@@ -17,6 +24,11 @@ class ServiceContainer:
     sentinel: Any
     briefing: Any
     coordinator: Any
+    event_repo: AnalysisEventRepository
+    settings_repo: SettingsRepository
+    prompt_repo: PromptRepository
+    report_repo: ReportRepository
+    exclusion_repo: ExclusionRepository
 
     def __getitem__(self, key: str) -> Any:
         """Backwards-compatibility shim for string-key access during migration."""

@@ -22,6 +22,11 @@ from app.models import (
     Settings,
 )
 from app.container import ServiceContainer
+from app.repositories.analysis_events import AnalysisEventRepository
+from app.repositories.exclusions import ExclusionRepository
+from app.repositories.prompts import PromptRepository
+from app.repositories.reports import ReportRepository
+from app.repositories.settings import SettingsRepository
 from app.services.briefing import BriefingService
 from app.services.cli_backends import CLIBackendRunner
 from app.services.coordinator import RuntimeCoordinator
@@ -313,6 +318,11 @@ def create_app() -> Flask:
     llm_call_service = LLMCallService(llm_client=llm_client)
     verdict_parser = VerdictParser()
     telegram_notifier = TelegramNotifier()
+    event_repo = AnalysisEventRepository()
+    settings_repo = SettingsRepository()
+    prompt_repo = PromptRepository()
+    report_repo = ReportRepository()
+    exclusion_repo = ExclusionRepository()
     sentinel_service = SentinelService(llm_call_service=llm_call_service, verdict_parser=verdict_parser, telegram_notifier=telegram_notifier)
     briefing_service = BriefingService(llm_call_service=llm_call_service)
     coordinator = RuntimeCoordinator(app=app, sentinel_service=sentinel_service, briefing_service=briefing_service)
@@ -325,6 +335,11 @@ def create_app() -> Flask:
         sentinel=sentinel_service,
         briefing=briefing_service,
         coordinator=coordinator,
+        event_repo=event_repo,
+        settings_repo=settings_repo,
+        prompt_repo=prompt_repo,
+        report_repo=report_repo,
+        exclusion_repo=exclusion_repo,
     )
 
     _register_api_blueprints(app)
