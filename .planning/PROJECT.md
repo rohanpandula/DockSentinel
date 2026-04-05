@@ -31,7 +31,8 @@ Every refactoring change must keep the existing API contract intact (all endpoin
 ### Active
 
 - ✓ Repository pattern for DB access (AnalysisEvent, Settings, Prompts, Reports, Exclusions) — Validated in Phase 2: Repository Layer
-- [ ] Move web routes out of app factory into blueprints; replace raw SQL migrations with Alembic
+- ✓ Replace raw SQL migrations with Alembic (render_as_batch for SQLite, baseline + compat revisions) — Validated in Phase 3: Alembic Migration Infrastructure
+- [ ] Move web routes out of app factory into blueprints
 - [ ] API pagination and Pydantic request/response validation on all list endpoints
 - [ ] Refactor SentinelService into composable pipeline stages (log buffering, LLM calls, dedup, rate limiting, alerts)
 - [ ] Create AlertStrategy abstraction (prep for Slack/email/Discord)
@@ -85,7 +86,7 @@ Every refactoring change must keep the existing API contract intact (all endpoin
 |----------|-----------|---------|
 | Refactor-only milestone (no features) | Clean foundation needed before React SPA, RAG, etc. Tech debt compounds | — Pending |
 | Keep Flask (no FastAPI migration) | Working framework, minimize blast radius of refactor | — Pending |
-| Alembic for migrations | Replace hardcoded SQL in app factory; industry standard for SQLAlchemy | — Pending |
+| Alembic for migrations | Replace hardcoded SQL in app factory; industry standard for SQLAlchemy | ✓ Validated Phase 3 |
 | Repository pattern over raw queries | Testability, query optimization, single responsibility | ✓ Validated Phase 2 |
 | Pydantic v2 for request/response | Already in stack (VerdictParser); consistent validation approach | — Pending |
 | Strategy pattern for alerts | Prep for ROADMAP Phase 3/5 multi-channel without building it now | — Pending |
