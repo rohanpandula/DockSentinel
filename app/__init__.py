@@ -12,8 +12,6 @@ from app.config import AppConfig
 from app.extensions import db
 from app.models import (
     DEFAULT_PROMPTS,
-    AnalysisEvent,
-    DailyReport,
     ExclusionRule,
     PromptTemplate,
     PromptKey,
@@ -132,31 +130,32 @@ def _register_web_routes(app: Flask) -> None:
 
     @app.get("/dashboard")
     def dashboard():
-        state = SentinelState.singleton()
+        container = app.extensions["services"]
+        state = SentinelState.singleton()  # per D-07, SentinelState keeps singleton
         today_start = utcnow_naive().replace(hour=0, minute=0, second=0, microsecond=0)
-        today_events = AnalysisEvent.query.filter(AnalysisEvent.created_at >= today_start).all()
+        today_events = container.event_repo.get_today(today_start)
 
         counts = {"critical": 0, "warning": 0, "noise": 0}
         for event in today_events:
             if event.classification in counts:
                 counts[event.classification] += 1
 
-        events = AnalysisEvent.query.order_by(AnalysisEvent.created_at.desc()).limit(10).all()
-        latest_report = DailyReport.query.order_by(DailyReport.created_at.desc()).first()
+        events = container.event_repo.get_recent(limit=10)
+        latest_report = container.report_repo.get_latest()
 
-        coordinator = app.extensions["services"].coordinator
         return render_template(
             "dashboard.html",
             state=state,
             counts=counts,
             events=events,
             latest_report=latest_report,
-            active_containers=coordinator.active_container_ids(),
+            active_containers=container.coordinator.active_container_ids(),
         )
 
     @app.route("/settings", methods=["GET", "POST"])
     def settings_page():
-        settings = Settings.singleton()
+        container = app.extensions["services"]
+        settings = container.settings_repo.get()
         if request.method == "POST":
             for key, value in request.form.items():
                 if hasattr(settings, key):
@@ -181,65 +180,74 @@ def _register_web_routes(app: Flask) -> None:
                     }:
                         cast_value = int(value)
                     setattr(settings, key, cast_value)
-            db.session.commit()
-            app.extensions["services"].coordinator.refresh_schedule()
+            container.settings_repo.save()
+            container.coordinator.refresh_schedule()
             return redirect(url_for("settings_page"))
         return render_template("settings.html", settings=settings)
 
     @app.route("/exclusions", methods=["GET", "POST"])
     def exclusions_page():
+        container = app.extensions["services"]
         if request.method == "POST":
             pattern = request.form.get("container_pattern", "").strip()
-            if pattern and ExclusionRule.query.filter_by(container_pattern=pattern).first() is None:
-                db.session.add(ExclusionRule(container_pattern=pattern, enabled=True))
+            if pattern and container.exclusion_repo.find_by_pattern(pattern) is None:
+                container.exclusion_repo.add(
+                    ExclusionRule(container_pattern=pattern, enabled=True)
+                )
                 db.session.commit()
-                app.extensions["services"].coordinator.trigger_reconcile()
+                container.coordinator.trigger_reconcile()
             return redirect(url_for("exclusions_page"))
 
-        exclusions = ExclusionRule.query.order_by(ExclusionRule.container_pattern.asc()).all()
+        exclusions = container.exclusion_repo.list_all()
         return render_template("exclusions.html", exclusions=exclusions)
 
     @app.get("/exclusions/delete/<int:rule_id>")
     def exclusions_delete(rule_id: int):
-        rule = db.session.get(ExclusionRule, rule_id)
+        container = app.extensions["services"]
+        rule = container.exclusion_repo.get(rule_id)
         if rule is not None:
-            db.session.delete(rule)
+            container.exclusion_repo.delete(rule)
             db.session.commit()
-            app.extensions["services"].coordinator.trigger_reconcile()
+            container.coordinator.trigger_reconcile()
         return redirect(url_for("exclusions_page"))
 
     @app.get("/insights")
     def insights_page():
-        query = AnalysisEvent.query
-        container = request.args.get("container")
+        svc = app.extensions["services"]
+        container_filter = request.args.get("container")
         classification = request.args.get("classification")
-        start = request.args.get("start")
-        end = request.args.get("end")
+        start_str = request.args.get("start")
+        end_str = request.args.get("end")
 
-        if container:
-            query = query.filter(AnalysisEvent.container_name == container)
-        if classification:
-            query = query.filter(AnalysisEvent.classification == classification)
-        if start:
+        start = None
+        end = None
+        if start_str:
             try:
-                query = query.filter(AnalysisEvent.created_at >= datetime.fromisoformat(start))
+                start = datetime.fromisoformat(start_str)
             except ValueError:
                 pass
-        if end:
+        if end_str:
             try:
-                query = query.filter(AnalysisEvent.created_at <= datetime.fromisoformat(end))
+                end = datetime.fromisoformat(end_str)
             except ValueError:
                 pass
 
-        events = query.order_by(AnalysisEvent.created_at.desc()).limit(200).all()
-        containers = [c[0] for c in db.session.query(AnalysisEvent.container_name).distinct().all() if c[0]]
+        events = svc.event_repo.get_filtered(
+            container=container_filter,
+            classification=classification,
+            start=start,
+            end=end,
+            limit=200,
+        )
+        containers = svc.event_repo.get_distinct_container_names()
         return render_template("insights.html", events=events, containers=containers)
 
     @app.get("/reports")
     def reports_page():
-        reports = DailyReport.query.order_by(DailyReport.created_at.desc()).all()
+        container = app.extensions["services"]
+        reports = container.report_repo.list_all()
         selected_id = request.args.get("id", type=int)
-        selected = db.session.get(DailyReport, selected_id) if selected_id else (reports[0] if reports else None)
+        selected = container.report_repo.get(selected_id) if selected_id else (reports[0] if reports else None)
         return render_template("reports.html", reports=reports, selected_report=selected)
 
     @app.post("/reports/generate")
@@ -249,13 +257,14 @@ def _register_web_routes(app: Flask) -> None:
 
     @app.route("/prompts", methods=["GET", "POST"])
     def prompt_studio_page():
+        container = app.extensions["services"]
         selected_key = request.args.get("key", PromptKey.SENTINEL_ANALYSIS.value)
-        prompt = PromptTemplate.query.filter_by(key=selected_key).first()
+        prompt = container.prompt_repo.get_by_key(selected_key)
 
         if request.method == "POST":
             action = request.form.get("action")
             key = request.form.get("key", selected_key)
-            prompt = PromptTemplate.query.filter_by(key=key).first()
+            prompt = container.prompt_repo.get_by_key(key)
             if prompt is not None:
                 if action == "save":
                     content = request.form.get("content", "").strip()
@@ -270,7 +279,7 @@ def _register_web_routes(app: Flask) -> None:
                 db.session.commit()
             return redirect(url_for("prompt_studio_page", key=key))
 
-        prompts = PromptTemplate.query.order_by(PromptTemplate.key.asc()).all()
+        prompts = container.prompt_repo.list_all()
         return render_template("prompt_studio.html", prompts=prompts, selected_prompt=prompt)
 
     @app.post("/sentinel/toggle")
