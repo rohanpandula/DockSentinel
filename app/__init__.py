@@ -21,9 +21,16 @@ from app.models import (
     SentinelState,
     Settings,
 )
+from app.container import ServiceContainer
+from app.repositories.analysis_events import AnalysisEventRepository
+from app.repositories.exclusions import ExclusionRepository
+from app.repositories.prompts import PromptRepository
+from app.repositories.reports import ReportRepository
+from app.repositories.settings import SettingsRepository
 from app.services.briefing import BriefingService
 from app.services.cli_backends import CLIBackendRunner
 from app.services.coordinator import RuntimeCoordinator
+from app.services.llm_call import LLMCallService
 from app.services.llm_client import LLMClient
 from app.services.sentinel import SentinelService
 from app.services.telegram import TelegramNotifier
@@ -137,7 +144,7 @@ def _register_web_routes(app: Flask) -> None:
         events = AnalysisEvent.query.order_by(AnalysisEvent.created_at.desc()).limit(10).all()
         latest_report = DailyReport.query.order_by(DailyReport.created_at.desc()).first()
 
-        coordinator = app.extensions["services"]["coordinator"]
+        coordinator = app.extensions["services"].coordinator
         return render_template(
             "dashboard.html",
             state=state,
@@ -175,7 +182,7 @@ def _register_web_routes(app: Flask) -> None:
                         cast_value = int(value)
                     setattr(settings, key, cast_value)
             db.session.commit()
-            app.extensions["services"]["coordinator"].refresh_schedule()
+            app.extensions["services"].coordinator.refresh_schedule()
             return redirect(url_for("settings_page"))
         return render_template("settings.html", settings=settings)
 
@@ -186,7 +193,7 @@ def _register_web_routes(app: Flask) -> None:
             if pattern and ExclusionRule.query.filter_by(container_pattern=pattern).first() is None:
                 db.session.add(ExclusionRule(container_pattern=pattern, enabled=True))
                 db.session.commit()
-                app.extensions["services"]["coordinator"].trigger_reconcile()
+                app.extensions["services"].coordinator.trigger_reconcile()
             return redirect(url_for("exclusions_page"))
 
         exclusions = ExclusionRule.query.order_by(ExclusionRule.container_pattern.asc()).all()
@@ -198,7 +205,7 @@ def _register_web_routes(app: Flask) -> None:
         if rule is not None:
             db.session.delete(rule)
             db.session.commit()
-            app.extensions["services"]["coordinator"].trigger_reconcile()
+            app.extensions["services"].coordinator.trigger_reconcile()
         return redirect(url_for("exclusions_page"))
 
     @app.get("/insights")
@@ -237,7 +244,7 @@ def _register_web_routes(app: Flask) -> None:
 
     @app.post("/reports/generate")
     def reports_generate():
-        app.extensions["services"]["briefing"].generate_report()
+        app.extensions["services"].briefing.generate_report()
         return redirect(url_for("reports_page"))
 
     @app.route("/prompts", methods=["GET", "POST"])
@@ -268,14 +275,14 @@ def _register_web_routes(app: Flask) -> None:
 
     @app.post("/sentinel/toggle")
     def sentinel_toggle_from_ui():
-        sentinel = app.extensions["services"]["sentinel"]
+        sentinel = app.extensions["services"].sentinel
         desired = request.form.get("enabled") == "true"
         sentinel.set_enabled(desired)
         return redirect(url_for("dashboard"))
 
     @app.post("/sentinel/analyze")
     def sentinel_analyze_from_ui():
-        sentinel = app.extensions["services"]["sentinel"]
+        sentinel = app.extensions["services"].sentinel
         container = request.form.get("container", "").strip()
         if container:
             try:
@@ -308,21 +315,32 @@ def create_app() -> Flask:
     cli_backends_dir = os.getenv("CLI_BACKENDS_DIR", os.path.join(os.path.dirname(__file__), "..", "llm-backends"))
     cli_runner = CLIBackendRunner(backends_dir=os.path.abspath(cli_backends_dir), max_concurrent_calls=1)
     llm_client = LLMClient(cli_runner=cli_runner)
+    llm_call_service = LLMCallService(llm_client=llm_client)
     verdict_parser = VerdictParser()
     telegram_notifier = TelegramNotifier()
-    sentinel_service = SentinelService(llm_client=llm_client, verdict_parser=verdict_parser, telegram_notifier=telegram_notifier)
-    briefing_service = BriefingService(llm_client=llm_client)
+    event_repo = AnalysisEventRepository()
+    settings_repo = SettingsRepository()
+    prompt_repo = PromptRepository()
+    report_repo = ReportRepository()
+    exclusion_repo = ExclusionRepository()
+    sentinel_service = SentinelService(llm_call_service=llm_call_service, verdict_parser=verdict_parser, telegram_notifier=telegram_notifier)
+    briefing_service = BriefingService(llm_call_service=llm_call_service)
     coordinator = RuntimeCoordinator(app=app, sentinel_service=sentinel_service, briefing_service=briefing_service)
 
-    app.extensions["services"] = {
-        "llm_client": llm_client,
-        "cli_runner": cli_runner,
-        "verdict_parser": verdict_parser,
-        "telegram": telegram_notifier,
-        "sentinel": sentinel_service,
-        "briefing": briefing_service,
-        "coordinator": coordinator,
-    }
+    app.extensions["services"] = ServiceContainer(
+        llm_client=llm_client,
+        llm_call=llm_call_service,
+        verdict_parser=verdict_parser,
+        telegram_notifier=telegram_notifier,
+        sentinel=sentinel_service,
+        briefing=briefing_service,
+        coordinator=coordinator,
+        event_repo=event_repo,
+        settings_repo=settings_repo,
+        prompt_repo=prompt_repo,
+        report_repo=report_repo,
+        exclusion_repo=exclusion_repo,
+    )
 
     _register_api_blueprints(app)
     _register_web_routes(app)

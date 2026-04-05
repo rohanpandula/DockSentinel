@@ -37,8 +37,8 @@ def test_sentinel_critical_pipeline(tmp_path, monkeypatch):
     app = _build_app(tmp_path, monkeypatch)
 
     with app.app_context():
-        sentinel = app.extensions["services"]["sentinel"]
-        sentinel.llm_client = DummyLLM()
+        sentinel = app.extensions["services"].sentinel
+        sentinel.llm_call_service._client = DummyLLM()
         sentinel.telegram_notifier = DummyTelegram()
         sentinel.set_enabled(True)
 
@@ -61,8 +61,8 @@ def test_sentinel_rate_limit_suppresses_alert(tmp_path, monkeypatch):
     app = _build_app(tmp_path, monkeypatch)
 
     with app.app_context():
-        sentinel = app.extensions["services"]["sentinel"]
-        sentinel.llm_client = DummyLLM()
+        sentinel = app.extensions["services"].sentinel
+        sentinel.llm_call_service._client = DummyLLM()
         sentinel.telegram_notifier = DummyTelegram()
         sentinel.set_enabled(True)
 
@@ -99,7 +99,7 @@ def test_sentinel_records_excluded_events_with_rate_limit(tmp_path, monkeypatch)
     app = _build_app(tmp_path, monkeypatch)
 
     with app.app_context():
-        sentinel = app.extensions["services"]["sentinel"]
+        sentinel = app.extensions["services"].sentinel
         sentinel.set_enabled(True)
 
         db.session.add(ExclusionRule(container_pattern="excluded-service", enabled=True))
@@ -125,8 +125,8 @@ def test_sentinel_cooldown_suppresses_duplicate_alert(tmp_path, monkeypatch):
     app = _build_app(tmp_path, monkeypatch)
 
     with app.app_context():
-        sentinel = app.extensions["services"]["sentinel"]
-        sentinel.llm_client = DummyLLM()
+        sentinel = app.extensions["services"].sentinel
+        sentinel.llm_call_service._client = DummyLLM()
         sentinel.telegram_notifier = DummyTelegram()
         sentinel.set_enabled(True)
 
@@ -156,8 +156,8 @@ def test_sentinel_dedup_skips_duplicate_chunk(tmp_path, monkeypatch):
     app = _build_app(tmp_path, monkeypatch)
 
     with app.app_context():
-        sentinel = app.extensions["services"]["sentinel"]
-        sentinel.llm_client = DummyLLM()
+        sentinel = app.extensions["services"].sentinel
+        sentinel.llm_call_service._client = DummyLLM()
         sentinel.telegram_notifier = DummyTelegram()
         sentinel.set_enabled(True)
 
@@ -185,8 +185,8 @@ def test_sentinel_per_container_rate_limit(tmp_path, monkeypatch):
     app = _build_app(tmp_path, monkeypatch)
 
     with app.app_context():
-        sentinel = app.extensions["services"]["sentinel"]
-        sentinel.llm_client = DummyLLM()
+        sentinel = app.extensions["services"].sentinel
+        sentinel.llm_call_service._client = DummyLLM()
         sentinel.telegram_notifier = DummyTelegram()
         sentinel.set_enabled(True)
 

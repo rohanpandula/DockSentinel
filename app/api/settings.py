@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import dataclasses
+
 from flask import Blueprint, current_app, jsonify, request
 
+from app.config_objects import LLMConfig
 from app.extensions import db
 from app.models import Settings
 
@@ -54,7 +57,7 @@ def update_settings() -> tuple[dict, int]:
 
     db.session.commit()
 
-    coordinator = current_app.extensions["services"]["coordinator"]
+    coordinator = current_app.extensions["services"].coordinator
     coordinator.refresh_schedule()
 
     return jsonify(settings.as_dict()), 200
@@ -63,39 +66,16 @@ def update_settings() -> tuple[dict, int]:
 @bp.post("/settings/test-llm")
 def test_llm_connection() -> tuple[dict, int]:
     settings = Settings.singleton()
-    llm_client = current_app.extensions["services"]["llm_client"]
-    transport = (settings.llm_transport or "api").strip().lower()
-    timeout_seconds = settings.llm_timeout_seconds
-    retries = 0
-    if transport == "cli":
-        timeout_seconds = settings.cli_timeout_seconds
-        retries = 0
+    llm_call = current_app.extensions["services"].llm_call
 
     try:
-        if hasattr(llm_client, "complete"):
-            llm_client.complete(
-                transport=transport,
-                cli_backend=settings.cli_backend,
-                base_url=settings.llm_base_url,
-                api_key=settings.llm_api_key,
-                model=settings.llm_model,
-                messages=[{"role": "user", "content": "Respond with the single word: pong"}],
-                timeout_seconds=timeout_seconds,
-                max_retries=retries,
-                max_tokens=8,
-                temperature=0.0,
-            )
-        else:
-            llm_client.chat_completion(
-                base_url=settings.llm_base_url,
-                api_key=settings.llm_api_key,
-                model=settings.llm_model,
-                messages=[{"role": "user", "content": "Respond with the single word: pong"}],
-                timeout_seconds=timeout_seconds,
-                max_retries=retries,
-                max_tokens=8,
-                temperature=0.0,
-            )
+        config = dataclasses.replace(LLMConfig.from_settings(settings), max_retries=0, cli_max_retries=0)
+        llm_call.call(
+            config=config,
+            messages=[{"role": "user", "content": "Respond with the single word: pong"}],
+            max_tokens=8,
+            temperature=0.0,
+        )
     except Exception as exc:  # pragma: no cover - network dependent
         return jsonify({"ok": False, "error": str(exc)}), 400
 

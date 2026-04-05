@@ -10,7 +10,7 @@ bp = Blueprint("telegram_api", __name__, url_prefix="/api")
 @bp.post("/telegram/test")
 def test_telegram() -> tuple[dict, int]:
     settings = Settings.singleton()
-    notifier = current_app.extensions["services"]["telegram"]
+    notifier = current_app.extensions["services"].telegram_notifier
 
     sent, error = notifier.send_message(
         settings.telegram_token or "",

@@ -82,7 +82,7 @@ def test_core_api_endpoints(tmp_path, monkeypatch):
 
 def test_settings_test_llm_success(tmp_path, monkeypatch):
     app = _build_app(tmp_path, monkeypatch)
-    app.extensions["services"]["llm_client"] = _LLMOk()
+    app.extensions["services"].llm_call._client = _LLMOk()
     client = app.test_client()
 
     response = client.post("/api/settings/test-llm")
@@ -92,7 +92,7 @@ def test_settings_test_llm_success(tmp_path, monkeypatch):
 
 def test_settings_test_llm_failure(tmp_path, monkeypatch):
     app = _build_app(tmp_path, monkeypatch)
-    app.extensions["services"]["llm_client"] = _LLMFail()
+    app.extensions["services"].llm_call._client = _LLMFail()
     client = app.test_client()
 
     response = client.post("/api/settings/test-llm")

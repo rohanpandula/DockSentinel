@@ -24,6 +24,6 @@ def get_report(report_id: int) -> tuple[dict, int]:
 
 @bp.post("/reports/generate")
 def generate_report() -> tuple[dict, int]:
-    briefing = current_app.extensions["services"]["briefing"]
+    briefing = current_app.extensions["services"].briefing
     report = briefing.generate_report()
     return jsonify(report.as_dict()), 201
