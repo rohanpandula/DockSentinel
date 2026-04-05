@@ -6,7 +6,6 @@ from datetime import datetime
 
 from dotenv import load_dotenv
 from flask import Flask, redirect, render_template, request, url_for
-from sqlalchemy import inspect, text
 
 from app.config import AppConfig
 from app.extensions import db
@@ -78,29 +77,6 @@ def _seed_defaults() -> None:
 
     db.session.commit()
 
-
-def _ensure_settings_schema_compat() -> None:
-    inspector = inspect(db.engine)
-    if "settings" not in inspector.get_table_names():
-        return
-
-    existing_columns = {column["name"] for column in inspector.get_columns("settings")}
-    migrations = {
-        "llm_transport": "ALTER TABLE settings ADD COLUMN llm_transport VARCHAR(16) NOT NULL DEFAULT 'api'",
-        "cli_backend": "ALTER TABLE settings ADD COLUMN cli_backend VARCHAR(64) NOT NULL DEFAULT 'codex'",
-        "cli_timeout_seconds": "ALTER TABLE settings ADD COLUMN cli_timeout_seconds INTEGER NOT NULL DEFAULT 120",
-        "cli_max_retries": "ALTER TABLE settings ADD COLUMN cli_max_retries INTEGER NOT NULL DEFAULT 1",
-        "dedup_window_seconds": "ALTER TABLE settings ADD COLUMN dedup_window_seconds INTEGER NOT NULL DEFAULT 300",
-        "container_rate_limit_count": "ALTER TABLE settings ADD COLUMN container_rate_limit_count INTEGER NOT NULL DEFAULT 10",
-        "container_rate_limit_window_seconds": "ALTER TABLE settings ADD COLUMN container_rate_limit_window_seconds INTEGER NOT NULL DEFAULT 3600",
-        "keyword_flush_delay_lines": "ALTER TABLE settings ADD COLUMN keyword_flush_delay_lines INTEGER NOT NULL DEFAULT 5",
-    }
-
-    for column_name, statement in migrations.items():
-        if column_name not in existing_columns:
-            db.session.execute(text(statement))
-
-    db.session.commit()
 
 
 def _register_api_blueprints(app: Flask) -> None:
@@ -317,8 +293,8 @@ def create_app() -> Flask:
     db.init_app(app)
 
     with app.app_context():
-        db.create_all()
-        _ensure_settings_schema_compat()
+        if app.config.get("TESTING"):
+            db.create_all()
         _seed_defaults()
 
     cli_backends_dir = os.getenv("CLI_BACKENDS_DIR", os.path.join(os.path.dirname(__file__), "..", "llm-backends"))
