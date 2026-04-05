@@ -60,7 +60,11 @@ Plans:
   2. `_ensure_settings_schema_compat` no longer exists in the codebase
   3. `db.create_all()` only runs when `TESTING=True` — production startup uses `alembic upgrade head` in the Docker entrypoint
   4. All 31 existing tests pass with no modifications to test logic
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 03-01-PLAN.md — Initialize Alembic with SQLite batch mode, create baseline and settings compat migrations
+- [ ] 03-02-PLAN.md — Gate db.create_all() to TESTING, delete compat function, update Docker entrypoint
 
 ### Phase 4: Service Decomposition and Blueprint
 **Goal**: Alert logic lives in a dedicated `AlertService` behind an `AlertStrategy` protocol, web routes live in a Blueprint, and `app/__init__.py` is reduced to pure wiring
@@ -94,6 +98,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. Foundation | 3/3 | Complete   | 2026-04-04 |
 | 2. Repository Layer | 2/3 | Executing  |  |
-| 3. Alembic Migration Infrastructure | 0/TBD | Not started | - |
+| 3. Alembic Migration Infrastructure | 0/2 | Not started | - |
 | 4. Service Decomposition and Blueprint | 0/TBD | Not started | - |
 | 5. API Quality and Hardening | 0/TBD | Not started | - |
