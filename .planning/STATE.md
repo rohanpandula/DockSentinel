@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.2
 milestone_name: milestone
-status: executing
-stopped_at: Completed 03-01-PLAN.md
-last_updated: "2026-04-05T02:31:53.547Z"
+status: verifying
+stopped_at: Completed 03-02-PLAN.md
+last_updated: "2026-04-05T02:36:39.255Z"
 last_activity: 2026-04-05
 progress:
   total_phases: 5
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 8
-  completed_plans: 7
+  completed_plans: 8
   percent: 0
 ---
 
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-04-04)
 
 Phase: 03 (alembic-migration-infrastructure) — EXECUTING
 Plan: 2 of 2
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-04-05
 
 Progress: [░░░░░░░░░░] 0%
@@ -57,6 +57,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 01 P03 | 4 | 2 tasks | 5 files |
 | Phase 02 P02 | 17 | 2 tasks | 3 files |
 | Phase 03 P01 | 3 | 2 tasks | 7 files |
+| Phase 03 P02 | 2 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -78,6 +79,8 @@ Recent decisions affecting current work:
 - [Phase 03-01]: Revision 1 excludes 8 compat columns; revision 2 adds them via batch_alter_table with server_default to model v0.1->v0.2 evolution
 - [Phase 03-01]: alembic.ini has no sqlalchemy.url; env.py reads DATABASE_URL env var at runtime (falls back to ./data/docksentinel.db)
 - [Phase 03-01]: env.py imports only db + app.models, not create_app -- avoids Flask app context dependency during alembic CLI runs
+- [Phase 03-02]: _ensure_settings_schema_compat deleted; Alembic migrations own all schema changes
+- [Phase 03-02]: docker-entrypoint.sh uses Python for v0.2 detection then shell alembic stamp; TESTING gate uses app.config.get('TESTING')
 
 ### Pending Todos
 
@@ -90,6 +93,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-05T02:31:53.544Z
-Stopped at: Completed 03-01-PLAN.md
+Last session: 2026-04-05T02:36:39.252Z
+Stopped at: Completed 03-02-PLAN.md
 Resume file: None

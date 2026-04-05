@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundation** - Extract LLMCallService, wire typed ServiceContainer, decompose Settings god object (completed 2026-04-04)
 - [ ] **Phase 2: Repository Layer** - Centralize all ORM queries behind typed repository classes
-- [ ] **Phase 3: Alembic Migration Infrastructure** - Replace hardcoded ALTER TABLE with versioned Alembic migrations
+- [x] **Phase 3: Alembic Migration Infrastructure** - Replace hardcoded ALTER TABLE with versioned Alembic migrations (completed 2026-04-05)
 - [ ] **Phase 4: Service Decomposition and Blueprint** - Extract AlertService, TelegramAlertStrategy, and web Blueprint
 - [ ] **Phase 5: API Quality and Hardening** - Pydantic validation, pagination, test coverage gate, Docker hardening
 
@@ -64,7 +64,7 @@ Plans:
 
 Plans:
 - [x] 03-01-PLAN.md — Initialize Alembic with SQLite batch mode, create baseline and settings compat migrations
-- [ ] 03-02-PLAN.md — Gate db.create_all() to TESTING, delete compat function, update Docker entrypoint
+- [x] 03-02-PLAN.md — Gate db.create_all() to TESTING, delete compat function, update Docker entrypoint
 
 ### Phase 4: Service Decomposition and Blueprint
 **Goal**: Alert logic lives in a dedicated `AlertService` behind an `AlertStrategy` protocol, web routes live in a Blueprint, and `app/__init__.py` is reduced to pure wiring
@@ -98,6 +98,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. Foundation | 3/3 | Complete   | 2026-04-04 |
 | 2. Repository Layer | 2/3 | Executing  |  |
-| 3. Alembic Migration Infrastructure | 1/2 | In Progress|  |
+| 3. Alembic Migration Infrastructure | 2/2 | Complete   | 2026-04-05 |
 | 4. Service Decomposition and Blueprint | 0/TBD | Not started | - |
 | 5. API Quality and Hardening | 0/TBD | Not started | - |

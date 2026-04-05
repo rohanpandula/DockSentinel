@@ -37,7 +37,7 @@ Requirements for this refactor milestone. Each maps to roadmap phases.
 - [x] **MIG-01**: Alembic initialized with render_as_batch=True for SQLite compatibility
 - [x] **MIG-02**: Initial migration generated and existing databases stamped (alembic stamp head)
 - [x] **MIG-03**: Hardcoded _ensure_settings_schema_compat ALTER TABLE statements replaced by Alembic revisions
-- [ ] **MIG-04**: db.create_all() gated to TESTING=True; production uses alembic upgrade head
+- [x] **MIG-04**: db.create_all() gated to TESTING=True; production uses alembic upgrade head
 
 ### App Structure
 
@@ -118,7 +118,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | MIG-01 | Phase 3 | Complete |
 | MIG-02 | Phase 3 | Complete |
 | MIG-03 | Phase 3 | Complete |
-| MIG-04 | Phase 3 | Pending |
+| MIG-04 | Phase 3 | Complete |
 | APP-01 | Phase 4 | Pending |
 | APP-02 | Phase 4 | Pending |
 | APP-03 | Phase 4 | Pending |
