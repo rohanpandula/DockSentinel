@@ -5,8 +5,6 @@ import dataclasses
 from flask import Blueprint, current_app, jsonify, request
 
 from app.config_objects import LLMConfig
-from app.extensions import db
-from app.models import Settings
 
 bp = Blueprint("settings_api", __name__, url_prefix="/api")
 
@@ -42,31 +40,33 @@ _ALLOWED_FIELDS = {
 
 @bp.get("/settings")
 def get_settings() -> tuple[dict, int]:
-    settings = Settings.singleton()
+    container = current_app.extensions["services"]
+    settings = container.settings_repo.get()
     return jsonify(settings.as_dict()), 200
 
 
 @bp.put("/settings")
 def update_settings() -> tuple[dict, int]:
     payload = request.get_json(silent=True) or {}
-    settings = Settings.singleton()
+    container = current_app.extensions["services"]
+    settings = container.settings_repo.get()
 
     for key, value in payload.items():
         if key in _ALLOWED_FIELDS:
             setattr(settings, key, value)
 
-    db.session.commit()
+    container.settings_repo.save()
 
-    coordinator = current_app.extensions["services"].coordinator
-    coordinator.refresh_schedule()
+    container.coordinator.refresh_schedule()
 
     return jsonify(settings.as_dict()), 200
 
 
 @bp.post("/settings/test-llm")
 def test_llm_connection() -> tuple[dict, int]:
-    settings = Settings.singleton()
-    llm_call = current_app.extensions["services"].llm_call
+    container = current_app.extensions["services"]
+    settings = container.settings_repo.get()
+    llm_call = container.llm_call
 
     try:
         config = dataclasses.replace(LLMConfig.from_settings(settings), max_retries=0, cli_max_retries=0)
