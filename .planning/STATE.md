@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.2
 milestone_name: milestone
 status: executing
-stopped_at: Phase 3 context gathered
-last_updated: "2026-04-05T02:04:13.263Z"
+stopped_at: Completed 03-01-PLAN.md
+last_updated: "2026-04-05T02:31:53.547Z"
 last_activity: 2026-04-05
 progress:
   total_phases: 5
   completed_phases: 2
-  total_plans: 6
-  completed_plans: 6
+  total_plans: 8
+  completed_plans: 7
   percent: 0
 ---
 
@@ -21,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-04)
 
 **Core value:** Every refactoring change must keep the existing API contract intact and all 31 tests passing — structure improves without breaking behavior.
-**Current focus:** Phase 02 — repository-layer
+**Current focus:** Phase 03 — alembic-migration-infrastructure
 
 ## Current Position
 
-Phase: 3
-Plan: Not started
-Status: Executing Phase 02
+Phase: 03 (alembic-migration-infrastructure) — EXECUTING
+Plan: 2 of 2
+Status: Ready to execute
 Last activity: 2026-04-05
 
 Progress: [░░░░░░░░░░] 0%
@@ -56,6 +56,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 01 P02 | 5 | 2 tasks | 9 files |
 | Phase 01 P03 | 4 | 2 tasks | 5 files |
 | Phase 02 P02 | 17 | 2 tasks | 3 files |
+| Phase 03 P01 | 3 | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -74,6 +75,9 @@ Recent decisions affecting current work:
 - [Phase 02-02]: BriefingService retains db import because db.session.commit() remains service-owned per D-01; only db.session.add(report) moved to repo
 - [Phase 01-foundation]: LLMConfig.from_settings normalizes transport centrally — (or 'api').strip().lower() no longer duplicated at call sites
 - [Phase 01-foundation]: test-connection endpoint uses dataclasses.replace to override retries=0, preserving original zero-retries behavior
+- [Phase 03-01]: Revision 1 excludes 8 compat columns; revision 2 adds them via batch_alter_table with server_default to model v0.1->v0.2 evolution
+- [Phase 03-01]: alembic.ini has no sqlalchemy.url; env.py reads DATABASE_URL env var at runtime (falls back to ./data/docksentinel.db)
+- [Phase 03-01]: env.py imports only db + app.models, not create_app -- avoids Flask app context dependency during alembic CLI runs
 
 ### Pending Todos
 
@@ -86,6 +90,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-05T02:04:13.260Z
-Stopped at: Phase 3 context gathered
-Resume file: .planning/phases/03-alembic-migration-infrastructure/03-CONTEXT.md
+Last session: 2026-04-05T02:31:53.544Z
+Stopped at: Completed 03-01-PLAN.md
+Resume file: None
