@@ -93,7 +93,12 @@ Plans:
   3. `pytest --cov` reports 80%+ coverage across service and API modules, and the CI gate fails the build if coverage drops below that threshold
   4. The Docker container starts as a non-root user and the `docker-compose up` health check reports healthy within 30 seconds
   5. All 31 existing tests plus new integration tests pass
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 05-01-PLAN.md — app/schemas/ package + Flask-Pydantic validation + pagination on /api/insights and /api/reports + error envelope remap
+- [ ] 05-02-PLAN.md — pytest-cov gate at 80%, shared tests/conftest.py fixtures, pipeline integration test + pagination/schema parity tests
+- [ ] 05-03-PLAN.md — Docker non-root user, /api/health HEALTHCHECK, named volume, Codex/Gemini CLI path relocation
 
 ## Progress
 
@@ -106,4 +111,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 2. Repository Layer | 2/3 | Executing  |  |
 | 3. Alembic Migration Infrastructure | 2/2 | Complete   | 2026-04-05 |
 | 4. Service Decomposition and Blueprint | 0/4 | Planned | - |
-| 5. API Quality and Hardening | 0/TBD | Not started | - |
+| 5. API Quality and Hardening | 0/3 | Planned | - |
