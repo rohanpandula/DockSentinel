@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 2: Repository Layer** - Centralize all ORM queries behind typed repository classes
 - [x] **Phase 3: Alembic Migration Infrastructure** - Replace hardcoded ALTER TABLE with versioned Alembic migrations (completed 2026-04-05)
 - [ ] **Phase 4: Service Decomposition and Blueprint** - Extract AlertService, TelegramAlertStrategy, and web Blueprint
-- [ ] **Phase 5: API Quality and Hardening** - Pydantic validation, pagination, test coverage gate, Docker hardening
+- [x] **Phase 5: API Quality and Hardening** - Pydantic validation, pagination, test coverage gate, Docker hardening (completed 2026-04-14)
 
 ## Phase Details
 
@@ -98,7 +98,7 @@ Plans:
 Plans:
 - [x] 05-01-PLAN.md — app/schemas/ package + Flask-Pydantic validation + pagination on /api/insights and /api/reports + error envelope remap
 - [x] 05-02-PLAN.md — pytest-cov gate at 80%, shared tests/conftest.py fixtures, pipeline integration test + pagination/schema parity tests
-- [ ] 05-03-PLAN.md — Docker non-root user, /api/health HEALTHCHECK, named volume, Codex/Gemini CLI path relocation
+- [x] 05-03-PLAN.md — Docker non-root user, /api/health HEALTHCHECK, named volume, Codex/Gemini CLI path relocation
 
 ## Progress
 
@@ -111,4 +111,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 2. Repository Layer | 2/3 | Executing  |  |
 | 3. Alembic Migration Infrastructure | 2/2 | Complete   | 2026-04-05 |
 | 4. Service Decomposition and Blueprint | 0/4 | Planned | - |
-| 5. API Quality and Hardening | 2/3 | In Progress|  |
+| 5. API Quality and Hardening | 3/3 | Complete   | 2026-04-14 |

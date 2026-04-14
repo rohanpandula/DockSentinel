@@ -61,10 +61,10 @@ Requirements for this refactor milestone. Each maps to roadmap phases.
 
 ### Docker
 
-- [ ] **DOCK-01**: Dockerfile runs as non-root user
-- [ ] **DOCK-02**: Docker health check configured
-- [ ] **DOCK-03**: Build cache optimized (dependency layer cached separately from app code)
-- [ ] **DOCK-04**: docker-compose.yml includes named volume for SQLite persistence
+- [x] **DOCK-01**: Dockerfile runs as non-root user
+- [x] **DOCK-02**: Docker health check configured
+- [x] **DOCK-03**: Build cache optimized (dependency layer cached separately from app code)
+- [x] **DOCK-04**: docker-compose.yml includes named volume for SQLite persistence
 
 ## v2 Requirements
 
@@ -130,10 +130,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TEST-02 | Phase 5 | Complete |
 | TEST-03 | Phase 5 | Complete |
 | TEST-04 | All | Complete |
-| DOCK-01 | Phase 5 | Pending |
-| DOCK-02 | Phase 5 | Pending |
-| DOCK-03 | Phase 5 | Pending |
-| DOCK-04 | Phase 5 | Pending |
+| DOCK-01 | Phase 5 | Complete |
+| DOCK-02 | Phase 5 | Complete |
+| DOCK-03 | Phase 5 | Complete |
+| DOCK-04 | Phase 5 | Complete |
 
 **Coverage:**
 - v1 requirements: 32 total

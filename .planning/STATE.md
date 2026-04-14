@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v0.2
 milestone_name: milestone
-status: executing
-stopped_at: Completed 05-02-PLAN.md
-last_updated: "2026-04-14T20:46:14.163Z"
+status: verifying
+stopped_at: Completed 05-03-PLAN.md — Phase 5 complete
+last_updated: "2026-04-14T21:05:22.417Z"
 last_activity: 2026-04-14
 progress:
   total_phases: 5
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 15
-  completed_plans: 15
+  completed_plans: 16
   percent: 100
 ---
 
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-04-04)
 
 Phase: 05 (api-quality-and-hardening) — EXECUTING
 Plan: 3 of 3
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-04-14
 
 Progress: [░░░░░░░░░░] 0%
@@ -60,6 +60,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 03 P02 | 2 | 2 tasks | 3 files |
 | Phase 05 P01 | 304 | 2 tasks | 23 files |
 | Phase 05 P02 | 420 | 2 tasks | 6 files |
+| Phase 05-api-quality-and-hardening P05-03 | 35 | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -88,6 +89,9 @@ Recent decisions affecting current work:
 - [Phase 05-02]: _LLMStub must return LLMResult dataclass — sentinel.py accesses llm_result.content; raw dicts raise AttributeError
 - [Phase 05-02]: Pipeline integration test requests db_session fixture to ensure app context is active for SQLAlchemy writes inside process_chunk
 - [Phase 05-02]: Sentinel status route is /api/sentinel/status not /api/sentinel — plan template had wrong path
+- [Phase 05-03]: start-period=15s for HEALTHCHECK confirmed sufficient by live verify — Alembic migration completes within the window on a fresh DB
+- [Phase 05-03]: Named volume docksentinel_data replaces bind mount — container-owned volume init avoids PermissionError (Pitfall P-04)
+- [Phase 05-03]: CODEX_HOME/GEMINI_HOME relocated to /home/appuser — mandatory match for USER appuser process at runtime
 
 ### Pending Todos
 
@@ -100,6 +104,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-14T20:46:14.159Z
-Stopped at: Completed 05-02-PLAN.md
+Last session: 2026-04-14T21:05:22.413Z
+Stopped at: Completed 05-03-PLAN.md — Phase 5 complete
 Resume file: None
