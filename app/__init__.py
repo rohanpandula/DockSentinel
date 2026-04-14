@@ -10,29 +10,10 @@ from flask import Flask, redirect, render_template, request, url_for
 from app.config import AppConfig
 from app.extensions import db
 from app.models import (
-    DEFAULT_PROMPTS,
     ExclusionRule,
-    PromptTemplate,
     PromptKey,
-    SchemaVersion,
     SentinelState,
-    Settings,
 )
-from app.container import ServiceContainer
-from app.repositories.analysis_events import AnalysisEventRepository
-from app.repositories.exclusions import ExclusionRepository
-from app.repositories.prompts import PromptRepository
-from app.repositories.reports import ReportRepository
-from app.repositories.settings import SettingsRepository
-from app.services.alerts import AlertService, TelegramAlertStrategy
-from app.services.briefing import BriefingService
-from app.services.cli_backends import CLIBackendRunner
-from app.services.coordinator import RuntimeCoordinator
-from app.services.llm_call import LLMCallService
-from app.services.llm_client import LLMClient
-from app.services.sentinel import SentinelService
-from app.services.telegram import TelegramNotifier
-from app.services.verdict_parser import VerdictParser
 from app.time_utils import utcnow_naive
 
 
@@ -52,32 +33,6 @@ def _ensure_sqlite_parent_dir(app: Flask, database_uri: str) -> None:
     parent = os.path.dirname(resolved_path)
     if parent:
         os.makedirs(parent, exist_ok=True)
-
-
-def _seed_defaults() -> None:
-    SchemaVersion.singleton()
-    Settings.singleton()
-    SentinelState.singleton()
-
-    for pattern in ["docksentinel", "ollama", "portainer", "open-webui"]:
-        if ExclusionRule.query.filter_by(container_pattern=pattern).first() is None:
-            db.session.add(ExclusionRule(container_pattern=pattern, enabled=True))
-
-    for key, content in DEFAULT_PROMPTS.items():
-        existing = PromptTemplate.query.filter_by(key=key.value).first()
-        if existing is None:
-            db.session.add(
-                PromptTemplate(
-                    key=key.value,
-                    content=content,
-                    default_content=content,
-                    version=1,
-                    is_default=True,
-                )
-            )
-
-    db.session.commit()
-
 
 
 def _register_api_blueprints(app: Flask) -> None:
@@ -296,57 +251,15 @@ def create_app() -> Flask:
     with app.app_context():
         if app.config.get("TESTING"):
             db.create_all()
-        _seed_defaults()
-
-    cli_backends_dir = os.getenv("CLI_BACKENDS_DIR", os.path.join(os.path.dirname(__file__), "..", "llm-backends"))
-    cli_runner = CLIBackendRunner(backends_dir=os.path.abspath(cli_backends_dir), max_concurrent_calls=1)
-    llm_client = LLMClient(cli_runner=cli_runner)
-    llm_call_service = LLMCallService(llm_client=llm_client)
-    verdict_parser = VerdictParser()
-    telegram_notifier = TelegramNotifier()
-    event_repo = AnalysisEventRepository()
-    settings_repo = SettingsRepository()
-    prompt_repo = PromptRepository()
-    report_repo = ReportRepository()
-    exclusion_repo = ExclusionRepository()
-    alert_strategy = TelegramAlertStrategy(telegram_notifier)
-    alert_service = AlertService(strategy=alert_strategy, event_repo=event_repo)
-    sentinel_service = SentinelService(
-        llm_call_service=llm_call_service,
-        verdict_parser=verdict_parser,
-        alert_service=alert_service,
-        event_repo=event_repo,
-        prompt_repo=prompt_repo,
-        exclusion_repo=exclusion_repo,
-    )
-    briefing_service = BriefingService(
-        llm_call_service=llm_call_service,
-        event_repo=event_repo,
-        prompt_repo=prompt_repo,
-        report_repo=report_repo,
-    )
-    coordinator = RuntimeCoordinator(app=app, sentinel_service=sentinel_service, briefing_service=briefing_service)
-
-    app.extensions["services"] = ServiceContainer(
-        llm_client=llm_client,
-        llm_call=llm_call_service,
-        verdict_parser=verdict_parser,
-        telegram_notifier=telegram_notifier,
-        alert_strategy=alert_strategy,
-        alert_service=alert_service,
-        sentinel=sentinel_service,
-        briefing=briefing_service,
-        coordinator=coordinator,
-        event_repo=event_repo,
-        settings_repo=settings_repo,
-        prompt_repo=prompt_repo,
-        report_repo=report_repo,
-        exclusion_repo=exclusion_repo,
-    )
+        from app.bootstrap import seed_defaults
+        from app.composition import build_container
+        seed_defaults()
+        app.extensions["services"] = build_container(app)
 
     _register_api_blueprints(app)
     _register_web_routes(app)
 
+    coordinator = app.extensions["services"].coordinator
     if app.config["START_COORDINATOR"] and not app.config["TESTING"]:
         coordinator.start()
         atexit.register(coordinator.stop)
