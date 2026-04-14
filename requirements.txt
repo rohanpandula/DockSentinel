@@ -10,3 +10,5 @@ python-dotenv==1.0.1
 tiktoken==0.8.0; python_version < "3.14"
 pytest==8.3.4
 pytest-mock==3.14.0
+Flask-Pydantic==0.14.0
+pytest-cov==7.1.0
