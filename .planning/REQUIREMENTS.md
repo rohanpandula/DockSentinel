@@ -47,10 +47,10 @@ Requirements for this refactor milestone. Each maps to roadmap phases.
 
 ### API Quality
 
-- [ ] **API-01**: Pydantic v2 request/response models added to all API list endpoints
-- [ ] **API-02**: GET /api/insights supports offset/limit/sort pagination parameters
-- [ ] **API-03**: GET /api/reports supports offset/limit pagination parameters
-- [ ] **API-04**: All existing API endpoints return identical response shapes (backward compatibility)
+- [x] **API-01**: Pydantic v2 request/response models added to all API list endpoints
+- [x] **API-02**: GET /api/insights supports offset/limit/sort pagination parameters
+- [x] **API-03**: GET /api/reports supports offset/limit pagination parameters
+- [x] **API-04**: All existing API endpoints return identical response shapes (backward compatibility)
 
 ### Test Infrastructure
 
@@ -122,10 +122,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | APP-01 | Phase 4 | Complete |
 | APP-02 | Phase 4 | Complete |
 | APP-03 | Phase 4 | Complete |
-| API-01 | Phase 5 | Pending |
-| API-02 | Phase 5 | Pending |
-| API-03 | Phase 5 | Pending |
-| API-04 | Phase 5 | Pending |
+| API-01 | Phase 5 | Complete |
+| API-02 | Phase 5 | Complete |
+| API-03 | Phase 5 | Complete |
+| API-04 | Phase 5 | Complete |
 | TEST-01 | Phase 5 | Pending |
 | TEST-02 | Phase 5 | Pending |
 | TEST-03 | Phase 5 | Pending |
