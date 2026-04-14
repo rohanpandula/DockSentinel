@@ -3,25 +3,37 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
     <title>{% block title %}DockSentinel{% endblock %}</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Geist:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}" />
     <script defer src="{{ url_for('static', filename='app.js') }}"></script>
   </head>
-  <body class="bg-slate-950 text-slate-100 min-h-screen">
-    <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur">
-      <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-        <a href="{{ url_for('dashboard') }}" class="font-bold tracking-wide text-cyan-300">DockSentinel</a>
-        <nav class="flex gap-4 text-sm">
-          <a class="hover:text-cyan-300" href="{{ url_for('dashboard') }}">Dashboard</a>
-          <a class="hover:text-cyan-300" href="{{ url_for('settings_page') }}">Settings</a>
-          <a class="hover:text-cyan-300" href="{{ url_for('exclusions_page') }}">Exclusions</a>
-          <a class="hover:text-cyan-300" href="{{ url_for('insights_page') }}">Insights</a>
-          <a class="hover:text-cyan-300" href="{{ url_for('reports_page') }}">Reports</a>
-          <a class="hover:text-cyan-300" href="{{ url_for('prompt_studio_page') }}">Prompt Studio</a>
+  <body>
+    {% set path = request.path %}
+    <header class="app-header">
+      <div class="app-header__inner">
+        <a class="brand" href="{{ url_for('dashboard') }}">
+          <span class="brand__mark" aria-hidden="true">D</span>
+          <span>DockSentinel</span>
+        </a>
+        <nav class="nav" aria-label="Primary">
+          <a class="nav__link {% if path in ('/', '/dashboard') %}nav__link--active{% endif %}" href="{{ url_for('dashboard') }}">Overview</a>
+          <a class="nav__link {% if path.startswith('/insights') %}nav__link--active{% endif %}" href="{{ url_for('insights_page') }}">Events</a>
+          <a class="nav__link {% if path.startswith('/reports') %}nav__link--active{% endif %}" href="{{ url_for('reports_page') }}">Reports</a>
+          <a class="nav__link {% if path.startswith('/exclusions') %}nav__link--active{% endif %}" href="{{ url_for('exclusions_page') }}">Exclusions</a>
+          <a class="nav__link {% if path.startswith('/prompt') %}nav__link--active{% endif %}" href="{{ url_for('prompt_studio_page') }}">Prompts</a>
+          <a class="nav__link {% if path.startswith('/settings') %}nav__link--active{% endif %}" href="{{ url_for('settings_page') }}">Settings</a>
         </nav>
       </div>
     </header>
-    <main class="max-w-7xl mx-auto px-4 py-6">
+    <main class="app-main">
       {% block content %}{% endblock %}
     </main>
   </body>

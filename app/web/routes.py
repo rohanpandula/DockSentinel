@@ -38,7 +38,23 @@ def dashboard():
         events=events,
         latest_report=latest_report,
         active_containers=container.coordinator.active_container_ids(),
+        known_containers=_list_running_containers(),
     )
+
+
+def _list_running_containers() -> list[str]:
+    try:
+        import docker
+
+        client = docker.from_env()
+        names = sorted({c.name for c in client.containers.list() if c.name})
+        try:
+            client.close()
+        except Exception:
+            pass
+        return names
+    except Exception:
+        return []
 
 
 @bp.route("/settings", methods=["GET", "POST"], endpoint="settings_page")

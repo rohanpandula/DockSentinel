@@ -1,12 +1,17 @@
 {% extends "base.html" %}
-{% block title %}DockSentinel | Prompt Studio{% endblock %}
+{% block title %}DockSentinel — Prompts{% endblock %}
 {% block content %}
-<section class="bg-slate-900 border border-slate-800 rounded-xl p-4">
-  <h1 class="text-xl font-semibold">Prompt Engineering Studio</h1>
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Prompts</h1>
+    <p class="page-subtitle">Versioned prompt templates used by the triage pipeline. Edits take effect on the next LLM call.</p>
+  </div>
+</div>
 
-  <form method="get" class="mt-3">
-    <label class="text-sm text-slate-300">Prompt Key</label>
-    <select name="key" onchange="this.form.submit()" class="w-full mt-1 px-3 py-2 rounded bg-slate-800 border border-slate-700">
+<section class="card card--padded">
+  <form method="get" class="field" style="max-width: 360px; margin-bottom: 18px;">
+    <span class="field__label">Prompt key</span>
+    <select class="select mono" name="key" onchange="this.form.submit()">
       {% for prompt in prompts %}
         <option value="{{ prompt.key }}" {% if selected_prompt and prompt.key == selected_prompt.key %}selected{% endif %}>{{ prompt.key }}</option>
       {% endfor %}
@@ -14,15 +19,23 @@
   </form>
 
   {% if selected_prompt %}
-    <form method="post" class="mt-4">
+    <form method="post" class="stack">
       <input type="hidden" name="key" value="{{ selected_prompt.key }}" />
-      <p class="text-sm text-slate-300">Version: {{ selected_prompt.version }} | Default: {{ selected_prompt.is_default }}</p>
-      <textarea name="content" rows="14" class="w-full mt-2 px-3 py-2 rounded bg-slate-800 border border-slate-700 font-mono text-sm">{{ selected_prompt.content }}</textarea>
-      <div class="mt-3 flex gap-2">
-        <button name="action" value="save" class="px-4 py-2 rounded bg-cyan-600 hover:bg-cyan-500">Save</button>
-        <button name="action" value="reset" class="px-4 py-2 rounded bg-amber-700 hover:bg-amber-600">Restore Default</button>
+      <div class="row row--wrap text-mono text-tertiary" style="gap: 16px;">
+        <span>version <span class="tabular" style="color: var(--fg-secondary);">{{ selected_prompt.version }}</span></span>
+        <span>default <span style="color: var(--fg-secondary);">{{ 'yes' if selected_prompt.is_default else 'no' }}</span></span>
+      </div>
+      <textarea class="textarea" name="content" rows="18">{{ selected_prompt.content }}</textarea>
+      <div class="row" style="gap: 10px;">
+        <button class="btn btn--primary" name="action" value="save">Save</button>
+        <button class="btn" name="action" value="reset">Restore default</button>
       </div>
     </form>
+  {% else %}
+    <div class="empty">
+      <div class="empty__icon">◦</div>
+      <p class="empty__title">Pick a prompt to edit</p>
+    </div>
   {% endif %}
 </section>
 {% endblock %}

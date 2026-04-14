@@ -1,35 +1,64 @@
 {% extends "base.html" %}
-{% block title %}DockSentinel | Reports{% endblock %}
+{% block title %}DockSentinel — Reports{% endblock %}
 {% block content %}
-<div class="grid lg:grid-cols-3 gap-4">
-  <section class="bg-slate-900 border border-slate-800 rounded-xl p-4">
-    <div class="flex items-center justify-between">
-      <h1 class="text-lg font-semibold">Daily Reports</h1>
-      <form method="post" action="{{ url_for('reports_generate') }}">
-        <button class="px-3 py-1.5 rounded bg-cyan-600 hover:bg-cyan-500 text-sm">Generate</button>
-      </form>
-    </div>
-    <ul class="mt-3 space-y-2 text-sm">
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Reports</h1>
+    <p class="page-subtitle">Nightly health briefings generated from the day's classified events.</p>
+  </div>
+  <form method="post" action="{{ url_for('reports_generate') }}">
+    <button class="btn btn--primary">Generate now</button>
+  </form>
+</div>
+
+<div class="grid" style="grid-template-columns: 300px 1fr; align-items: start;">
+  <section class="card">
+    <h2 class="card__title">Archive</h2>
+    <ul class="list-reset mt-md">
       {% for report in reports %}
         <li>
-          <a href="{{ url_for('reports_page', id=report.id) }}" class="block border border-slate-800 rounded p-2 hover:border-cyan-500">
-            #{{ report.id }} | {{ report.created_at }} | {{ report.status }}
+          <a class="report-link" href="{{ url_for('reports_page', id=report.id) }}">
+            <span class="report-link__id">#{{ report.id }}</span>
+            <span class="text-mono text-secondary">{{ report.created_at }}</span>
+            {% if report.status == 'ok' or report.status == 'success' %}
+              <span class="badge badge--ok">{{ report.status }}</span>
+            {% else %}
+              <span class="badge badge--neutral">{{ report.status }}</span>
+            {% endif %}
           </a>
         </li>
       {% else %}
-        <li class="text-slate-400">No reports yet.</li>
+        <li>
+          <div class="empty">
+            <div class="empty__icon">∅</div>
+            <p class="empty__title">No reports yet</p>
+            <p>Click "Generate now" or wait for the nightly scheduler.</p>
+          </div>
+        </li>
       {% endfor %}
     </ul>
   </section>
 
-  <section class="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl p-4">
+  <section class="card card--padded">
     {% if selected_report %}
-      <h2 class="text-lg font-semibold">Report #{{ selected_report.id }}</h2>
-      <p class="text-sm text-slate-300 mt-1">Window: {{ selected_report.period_start }} to {{ selected_report.period_end }}</p>
-      <pre class="mt-4 whitespace-pre-wrap bg-slate-950 border border-slate-800 rounded p-3 text-sm">{{ selected_report.markdown_content }}</pre>
+      <div class="card__header">
+        <h2 class="card__title card__title--lg">Report #{{ selected_report.id }}</h2>
+        <span class="text-mono text-tertiary">{{ selected_report.period_start }} → {{ selected_report.period_end }}</span>
+      </div>
+      <div class="report-view">{{ selected_report.markdown_content }}</div>
     {% else %}
-      <p class="text-slate-400">Select a report to view details.</p>
+      <div class="empty">
+        <div class="empty__icon">◦</div>
+        <p class="empty__title">Pick a report</p>
+        <p>Select an entry from the archive to view the briefing.</p>
+      </div>
     {% endif %}
   </section>
 </div>
+
+<style>
+  @media (max-width: 900px) {
+    main .grid[style*="300px"] { grid-template-columns: 1fr !important; }
+  }
+</style>
 {% endblock %}

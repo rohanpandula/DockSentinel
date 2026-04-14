@@ -1,73 +1,152 @@
 {% extends "base.html" %}
-{% block title %}DockSentinel | Dashboard{% endblock %}
+{% block title %}DockSentinel — Overview{% endblock %}
 {% block content %}
-<div class="grid lg:grid-cols-3 gap-4">
-  <section class="bg-slate-900 border border-slate-800 rounded-xl p-4">
-    <h2 class="text-lg font-semibold">Sentinel Status</h2>
-    <p class="mt-2 text-sm text-slate-300">Enabled: <span class="font-semibold">{{ state.enabled }}</span></p>
-    <p class="text-sm text-slate-300">Runtime: <span class="font-semibold">{{ state.runtime_status }}</span></p>
-    <p class="text-sm text-slate-300">LLM failures: <span class="font-semibold">{{ state.llm_failure_count }}</span></p>
-    <p class="text-sm text-slate-300">Active containers: <span class="font-semibold">{{ active_containers|length }}</span></p>
-    <div class="mt-4 flex gap-2">
-      <form method="post" action="{{ url_for('sentinel_toggle_from_ui') }}">
-        <input type="hidden" name="enabled" value="true" />
-        <button class="px-3 py-2 text-sm rounded bg-emerald-600 hover:bg-emerald-500">Start</button>
-      </form>
-      <form method="post" action="{{ url_for('sentinel_toggle_from_ui') }}">
-        <input type="hidden" name="enabled" value="false" />
-        <button class="px-3 py-2 text-sm rounded bg-rose-700 hover:bg-rose-600">Stop</button>
-      </form>
-    </div>
-  </section>
-
-  <section class="bg-slate-900 border border-slate-800 rounded-xl p-4">
-    <h2 class="text-lg font-semibold">Today Counts</h2>
-    <div class="mt-3 space-y-2 text-sm">
-      <p>Critical: <span class="text-rose-400 font-semibold">{{ counts.critical }}</span></p>
-      <p>Warning: <span class="text-amber-300 font-semibold">{{ counts.warning }}</span></p>
-      <p>Noise: <span class="text-slate-200 font-semibold">{{ counts.noise }}</span></p>
-    </div>
-    <form method="post" action="{{ url_for('reports_generate') }}" class="mt-4">
-      <button class="px-3 py-2 text-sm rounded bg-indigo-600 hover:bg-indigo-500">Generate Nightly Report Now</button>
-    </form>
-  </section>
-
-  <section class="bg-slate-900 border border-slate-800 rounded-xl p-4">
-    <h2 class="text-lg font-semibold">Analyze Now</h2>
-    <form method="post" action="{{ url_for('sentinel_analyze_from_ui') }}" class="mt-3 space-y-2">
-      <input name="container" placeholder="container name or id" class="w-full px-3 py-2 rounded bg-slate-800 border border-slate-700 text-sm" />
-      <button class="px-3 py-2 text-sm rounded bg-cyan-600 hover:bg-cyan-500">Run Analysis</button>
-    </form>
-    {% if latest_report %}
-      <a href="{{ url_for('reports_page', id=latest_report.id) }}" class="block mt-4 text-sm text-cyan-300 hover:underline">Latest report #{{ latest_report.id }}</a>
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Overview</h1>
+    <p class="page-subtitle">Real-time sentinel status, daily counts, and the most recent events across your fleet.</p>
+  </div>
+  <div class="row">
+    {% if state.enabled %}
+      <span class="badge badge--ok">running</span>
+    {% else %}
+      <span class="badge badge--neutral">stopped</span>
     {% endif %}
-  </section>
+    <span class="text-tertiary mono">{{ state.runtime_status }}</span>
+  </div>
 </div>
 
-<section class="mt-6 bg-slate-900 border border-slate-800 rounded-xl p-4">
-  <h2 class="text-lg font-semibold mb-3">Latest 10 Events</h2>
-  <div class="overflow-x-auto">
-    <table class="min-w-full text-sm">
-      <thead class="text-slate-300">
+<div class="grid-dashboard">
+  <section class="card card--padded">
+    <div class="card__header">
+      <h2 class="card__title card__title--lg">Sentinel</h2>
+      <div class="row">
+        <form method="post" action="{{ url_for('sentinel_toggle_from_ui') }}">
+          <input type="hidden" name="enabled" value="true" />
+          <button class="btn btn--primary btn--sm" {% if state.enabled %}disabled{% endif %}>Start</button>
+        </form>
+        <form method="post" action="{{ url_for('sentinel_toggle_from_ui') }}">
+          <input type="hidden" name="enabled" value="false" />
+          <button class="btn btn--sm" {% if not state.enabled %}disabled{% endif %}>Stop</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="grid" style="grid-template-columns: repeat(3, 1fr); gap: 20px;">
+      <div class="stat">
+        <span class="stat__label">Active</span>
+        <span class="stat__value {% if active_containers|length > 0 %}stat__value--ok{% endif %} tabular">{{ active_containers|length }}</span>
+        <span class="text-tertiary" style="font-size: 11px;">containers attached</span>
+      </div>
+      <div class="stat">
+        <span class="stat__label">LLM failures</span>
+        <span class="stat__value {% if state.llm_failure_count > 0 %}stat__value--warning{% endif %} tabular">{{ state.llm_failure_count }}</span>
+        <span class="text-tertiary" style="font-size: 11px;">since last restart</span>
+      </div>
+      <div class="stat">
+        <span class="stat__label">Runtime</span>
+        <span class="stat__value tabular" style="font-size: 16px; letter-spacing: 0;">{{ state.runtime_status }}</span>
+        <span class="text-tertiary" style="font-size: 11px;">{% if state.started_at %}since {{ state.started_at }}{% else %}not started{% endif %}</span>
+      </div>
+    </div>
+
+    <form method="post" action="{{ url_for('sentinel_analyze_from_ui') }}" class="mt-lg" data-analyze-form>
+      <div class="row" style="gap: 8px; align-items: stretch;">
+        <select class="select mono" name="container_choice" data-analyze-select style="flex: 1;">
+          {% if known_containers %}
+            <option value="" disabled selected>Pick a container…</option>
+            {% for name in known_containers %}
+              <option value="{{ name }}">{{ name }}</option>
+            {% endfor %}
+            <option value="__other__">Other…</option>
+          {% else %}
+            <option value="__other__" selected>Enter container manually…</option>
+          {% endif %}
+        </select>
+        <button class="btn">Analyze now</button>
+      </div>
+      <input
+        class="input mono mt-md"
+        name="container"
+        placeholder="container name or id"
+        data-analyze-custom
+        {% if known_containers %}hidden{% endif %}
+      />
+    </form>
+  </section>
+
+  <div class="stack">
+    <section class="card">
+      <h2 class="card__title">Today</h2>
+      <dl class="kv mt-md">
+        <dt>Critical</dt>
+        <dd><span class="tabular" style="color: var(--critical);">{{ counts.critical }}</span></dd>
+        <dt>Warning</dt>
+        <dd><span class="tabular" style="color: var(--warning);">{{ counts.warning }}</span></dd>
+        <dt>Noise</dt>
+        <dd><span class="tabular text-tertiary">{{ counts.noise }}</span></dd>
+      </dl>
+      <form method="post" action="{{ url_for('reports_generate') }}" class="mt-md">
+        <button class="btn btn--ghost" style="width: 100%;">Generate nightly report</button>
+      </form>
+    </section>
+
+    {% if latest_report %}
+    <section class="card">
+      <h2 class="card__title">Latest report</h2>
+      <a class="report-link mt-md" href="{{ url_for('reports_page', id=latest_report.id) }}">
+        <span class="report-link__id">#{{ latest_report.id }}</span>
+        <span class="text-mono">{{ latest_report.created_at }}</span>
+        <span class="badge badge--neutral badge--no-dot">view</span>
+      </a>
+    </section>
+    {% endif %}
+  </div>
+</div>
+
+<section class="mt-lg">
+  <div class="row row--between" style="margin-bottom: 12px;">
+    <h2 class="section-title" style="margin: 0;">Recent events</h2>
+    <a class="btn btn--ghost btn--sm" href="{{ url_for('insights_page') }}">View all →</a>
+  </div>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
         <tr>
-          <th class="text-left py-2">Time</th>
-          <th class="text-left py-2">Container</th>
-          <th class="text-left py-2">Status</th>
-          <th class="text-left py-2">Class</th>
-          <th class="text-left py-2">Summary</th>
+          <th style="width: 160px;">Time</th>
+          <th>Container</th>
+          <th style="width: 110px;">Severity</th>
+          <th style="width: 120px;">Status</th>
+          <th>Summary</th>
         </tr>
       </thead>
       <tbody>
         {% for e in events %}
-          <tr class="border-t border-slate-800">
-            <td class="py-2">{{ e.created_at }}</td>
-            <td class="py-2">{{ e.container_name }}</td>
-            <td class="py-2">{{ e.status }}</td>
-            <td class="py-2">{{ e.classification }}</td>
-            <td class="py-2">{{ e.summary or '-' }}</td>
+          <tr>
+            <td class="table__time">{{ e.created_at }}</td>
+            <td class="table__container">{{ e.container_name }}</td>
+            <td>
+              {% if e.classification == 'critical' %}
+                <span class="badge badge--critical">critical</span>
+              {% elif e.classification == 'warning' %}
+                <span class="badge badge--warning">warning</span>
+              {% else %}
+                <span class="badge badge--noise">{{ e.classification or 'noise' }}</span>
+              {% endif %}
+            </td>
+            <td class="text-mono text-secondary">{{ e.status }}</td>
+            <td class="text-secondary">{{ e.summary or '—' }}</td>
           </tr>
         {% else %}
-          <tr><td colspan="5" class="py-4 text-slate-400">No events yet.</td></tr>
+          <tr>
+            <td colspan="5">
+              <div class="empty">
+                <div class="empty__icon">∅</div>
+                <p class="empty__title">No events yet</p>
+                <p>Start the sentinel and attach to a container to begin capturing events.</p>
+              </div>
+            </td>
+          </tr>
         {% endfor %}
       </tbody>
     </table>

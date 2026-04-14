@@ -1,44 +1,75 @@
 {% extends "base.html" %}
-{% block title %}DockSentinel | Insights{% endblock %}
+{% block title %}DockSentinel — Events{% endblock %}
 {% block content %}
-<section class="bg-slate-900 border border-slate-800 rounded-xl p-4">
-  <h1 class="text-xl font-semibold">Insights Archive</h1>
-
-  <form method="get" class="mt-3 grid md:grid-cols-4 gap-2 text-sm">
-    <input name="container" list="container-list" placeholder="container" class="px-3 py-2 rounded bg-slate-800 border border-slate-700" />
-    <datalist id="container-list">
-      {% for c in containers %}<option value="{{ c }}"></option>{% endfor %}
-    </datalist>
-    <select name="classification" class="px-3 py-2 rounded bg-slate-800 border border-slate-700">
-      <option value="">all severities</option>
-      <option value="critical">critical</option>
-      <option value="warning">warning</option>
-      <option value="noise">noise</option>
-    </select>
-    <input name="start" type="datetime-local" class="px-3 py-2 rounded bg-slate-800 border border-slate-700" />
-    <button class="px-3 py-2 rounded bg-cyan-600 hover:bg-cyan-500">Filter</button>
-  </form>
-
-  <div class="mt-4 space-y-2">
-    {% for e in events %}
-      <details class="rounded border border-slate-800 bg-slate-950 p-3">
-        <summary class="cursor-pointer text-sm">
-          <span class="font-semibold">{{ e.created_at }}</span>
-          <span class="ml-2">{{ e.container_name }}</span>
-          <span class="ml-2 {% if e.classification == 'critical' %}text-rose-400{% elif e.classification == 'warning' %}text-amber-300{% else %}text-slate-300{% endif %}">{{ e.classification }}</span>
-          <span class="ml-2 text-slate-300">{{ e.summary or e.status }}</span>
-        </summary>
-        <div class="mt-2 text-sm text-slate-300 space-y-1">
-          <p><strong>Status:</strong> {{ e.status }}</p>
-          <p><strong>Root Cause:</strong> {{ e.root_cause_hypothesis or '-' }}</p>
-          <p><strong>Fix Suggestion:</strong> {{ e.fix_suggestion or '-' }}</p>
-          <p><strong>Confidence:</strong> {{ e.confidence if e.confidence is not none else '-' }}</p>
-          <pre class="whitespace-pre-wrap bg-slate-900 p-2 rounded border border-slate-800">{{ e.chunk_excerpt or '-' }}</pre>
-        </div>
-      </details>
-    {% else %}
-      <p class="text-slate-400">No events found.</p>
-    {% endfor %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Events</h1>
+    <p class="page-subtitle">Searchable archive of every classified event, with root-cause hypothesis and fix suggestion.</p>
   </div>
+</div>
+
+<section class="card card--padded">
+  <form method="get">
+    <div class="field-grid" style="grid-template-columns: repeat(4, 1fr);">
+      <label class="field">
+        <span class="field__label">Container</span>
+        <input class="input mono" name="container" list="container-list" placeholder="any" />
+        <datalist id="container-list">
+          {% for c in containers %}<option value="{{ c }}"></option>{% endfor %}
+        </datalist>
+      </label>
+      <label class="field">
+        <span class="field__label">Severity</span>
+        <select class="select" name="classification">
+          <option value="">all</option>
+          <option value="critical">critical</option>
+          <option value="warning">warning</option>
+          <option value="noise">noise</option>
+        </select>
+      </label>
+      <label class="field">
+        <span class="field__label">Since</span>
+        <input class="input tabular" name="start" type="datetime-local" />
+      </label>
+      <label class="field" style="justify-content: flex-end;">
+        <span class="field__label">&nbsp;</span>
+        <button class="btn btn--primary">Filter</button>
+      </label>
+    </div>
+  </form>
 </section>
+
+<div class="stack mt-lg">
+  {% for e in events %}
+    <details class="disclosure">
+      <summary class="disclosure__summary">
+        <span class="table__time">{{ e.created_at }}</span>
+        <span class="table__container">{{ e.container_name }}</span>
+        {% if e.classification == 'critical' %}
+          <span class="badge badge--critical">critical</span>
+        {% elif e.classification == 'warning' %}
+          <span class="badge badge--warning">warning</span>
+        {% else %}
+          <span class="badge badge--noise">{{ e.classification or 'noise' }}</span>
+        {% endif %}
+        <span class="text-secondary" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ e.summary or e.status }}</span>
+      </summary>
+      <div class="disclosure__body">
+        <p><strong>Status</strong> — {{ e.status }}</p>
+        <p><strong>Root cause</strong> — {{ e.root_cause_hypothesis or '—' }}</p>
+        <p><strong>Fix suggestion</strong> — {{ e.fix_suggestion or '—' }}</p>
+        <p><strong>Confidence</strong> — <span class="tabular">{{ e.confidence if e.confidence is not none else '—' }}</span></p>
+        <pre class="code-block">{{ e.chunk_excerpt or '—' }}</pre>
+      </div>
+    </details>
+  {% else %}
+    <div class="card">
+      <div class="empty">
+        <div class="empty__icon">∅</div>
+        <p class="empty__title">No events match this filter</p>
+        <p>Try widening the time window or clearing the severity filter.</p>
+      </div>
+    </div>
+  {% endfor %}
+</div>
 {% endblock %}
