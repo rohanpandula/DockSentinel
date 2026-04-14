@@ -71,8 +71,60 @@ function wireAnalyzeForm() {
   reveal();
 }
 
+function wireTryLLM() {
+  const root = document.querySelector("[data-tryllm]");
+  if (!root) return;
+  const issueId = root.dataset.issueId;
+  const runBtn = root.querySelector("[data-tryllm-run]");
+  const promptEl = root.querySelector("[data-tryllm-prompt]");
+  const statusEl = root.querySelector("[data-tryllm-status]");
+  const resultEl = root.querySelector("[data-tryllm-result]");
+  const bodyEl = root.querySelector("[data-tryllm-body]");
+  const metaEl = root.querySelector("[data-tryllm-meta]");
+  if (!runBtn || !promptEl) return;
+
+  runBtn.addEventListener("click", async () => {
+    const prompt = (promptEl.value || "").trim();
+    if (!prompt) {
+      setOutputState(statusEl, "error", "Enter a prompt");
+      return;
+    }
+    const payload = { prompt };
+    root.querySelectorAll("[data-tryllm-field]").forEach((el) => {
+      const v = (el.value || "").trim();
+      if (v) payload[el.dataset.tryllmField] = v;
+    });
+
+    runBtn.disabled = true;
+    setOutputState(statusEl, "pending", "Calling LLM…");
+    const started = performance.now();
+    try {
+      const resp = await fetch(`/api/issues/${issueId}/try-llm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await resp.json();
+      const roundtrip = Math.round(performance.now() - started);
+      if (resp.ok && data.ok) {
+        bodyEl.textContent = data.content || "(empty response)";
+        metaEl.textContent = `${data.model || "unknown"} · server ${data.latency_ms || "?"}ms · roundtrip ${roundtrip}ms`;
+        resultEl.hidden = false;
+        setOutputState(statusEl, "ok", "Done");
+      } else {
+        setOutputState(statusEl, "error", (data && data.error) || `HTTP ${resp.status}`);
+      }
+    } catch (err) {
+      setOutputState(statusEl, "error", err.message || String(err));
+    } finally {
+      runBtn.disabled = false;
+    }
+  });
+}
+
 window.addEventListener("DOMContentLoaded", () => {
   wireAnalyzeForm();
+  wireTryLLM();
   attachTestButton("btn-test-llm", "/api/settings/test-llm", {
     pending: "Testing LLM connection…",
     ok: "LLM reachable",

@@ -96,6 +96,65 @@
           <button class="btn btn--primary" name="status" value="open">Reopen</button>
         {% endif %}
       </form>
+
+      <section class="mt-lg" data-tryllm data-issue-id="{{ selected.id }}">
+        <h3 class="section-title">Try another LLM</h3>
+        <p class="text-tertiary" style="font-size:12px; margin:0 0 12px;">
+          Paste a prompt, optionally override the LLM endpoint, and the model's response will appear below. The issue body is automatically included as context. Overrides are used for this call only — nothing is saved to Settings.
+        </p>
+
+        <label class="field">
+          <span class="field__label">Prompt</span>
+          <textarea class="input mono" data-tryllm-prompt rows="4"
+            placeholder="e.g. Give me an alternative fix that does not require a restart.">Suggest two alternative root causes and one-line fix commands for each.</textarea>
+        </label>
+
+        <div class="field-grid mt-md" style="grid-template-columns: repeat(3, 1fr);">
+          <label class="field">
+            <span class="field__label">Base URL override</span>
+            <input class="input mono" data-tryllm-field="base_url" placeholder="leave blank to use Settings" />
+          </label>
+          <label class="field">
+            <span class="field__label">Model override</span>
+            <input class="input mono" data-tryllm-field="model" placeholder="leave blank to use Settings" />
+          </label>
+          <label class="field">
+            <span class="field__label">API key override</span>
+            <input class="input mono" data-tryllm-field="api_key" type="password" placeholder="leave blank to use Settings" />
+          </label>
+          <label class="field">
+            <span class="field__label">Transport</span>
+            <select class="input" data-tryllm-field="transport">
+              <option value="">(inherit)</option>
+              <option value="api">api</option>
+              <option value="cli">cli</option>
+            </select>
+          </label>
+          <label class="field">
+            <span class="field__label">CLI backend</span>
+            <select class="input" data-tryllm-field="cli_backend">
+              <option value="">(inherit)</option>
+              <option value="codex">codex</option>
+              <option value="claude">claude</option>
+              <option value="gemini">gemini</option>
+              <option value="ollama">ollama</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="row mt-md" style="gap:10px;">
+          <button class="btn btn--primary" data-tryllm-run type="button">Run</button>
+          <span class="inline-output" data-tryllm-status style="flex:1;"></span>
+        </div>
+
+        <div data-tryllm-result class="mt-md" hidden>
+          <div class="row row--between" style="margin-bottom:8px;">
+            <span class="eyebrow">Response</span>
+            <span class="text-tertiary text-mono" style="font-size:11px;" data-tryllm-meta></span>
+          </div>
+          <pre class="report-view" style="max-height:50vh;" data-tryllm-body></pre>
+        </div>
+      </section>
     {% else %}
       <div class="empty">
         <div class="empty__icon">◦</div>
