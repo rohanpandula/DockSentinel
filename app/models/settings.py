@@ -47,6 +47,9 @@ class Settings(db.Model):
     container_rate_limit_window_seconds = db.Column(db.Integer, nullable=False, default=3600)
     keyword_flush_delay_lines = db.Column(db.Integer, nullable=False, default=5)
 
+    # --- Coalescing (batch chunks per container before LLM call) ---
+    chunk_coalesce_window_seconds = db.Column(db.Integer, nullable=False, default=0)
+
     updated_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive, onupdate=utcnow_naive)
 
     @classmethod
@@ -86,5 +89,6 @@ class Settings(db.Model):
             "container_rate_limit_count": self.container_rate_limit_count,
             "container_rate_limit_window_seconds": self.container_rate_limit_window_seconds,
             "keyword_flush_delay_lines": self.keyword_flush_delay_lines,
+            "chunk_coalesce_window_seconds": self.chunk_coalesce_window_seconds,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

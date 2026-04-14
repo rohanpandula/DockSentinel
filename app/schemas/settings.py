@@ -34,6 +34,7 @@ class SettingsSchema(BaseModel):
     container_rate_limit_count: int | None = None
     container_rate_limit_window_seconds: int | None = None
     keyword_flush_delay_lines: int | None = None
+    chunk_coalesce_window_seconds: int | None = None
     updated_at: datetime | None = None
 
 
@@ -66,6 +67,7 @@ class UpdateSettingsBody(BaseModel):
     container_rate_limit_count: int | None = None
     container_rate_limit_window_seconds: int | None = None
     keyword_flush_delay_lines: str | None = None
+    chunk_coalesce_window_seconds: int | None = None
 
 
 class TestLLMResponse(BaseModel):

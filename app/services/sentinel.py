@@ -30,6 +30,7 @@ class SentinelService:
         event_repo: "AnalysisEventRepository",
         prompt_repo: "PromptRepository",
         exclusion_repo: "ExclusionRepository",
+        coalescer: Any = None,
     ) -> None:
         self.llm_call_service = llm_call_service
         self.verdict_parser = verdict_parser
@@ -37,6 +38,7 @@ class SentinelService:
         self.event_repo = event_repo
         self.prompt_repo = prompt_repo
         self.exclusion_repo = exclusion_repo
+        self.coalescer = coalescer
         self.log_buffer = LogBuffer(16000, 4000, 600)
 
     def _settings(self) -> Settings:
@@ -159,7 +161,14 @@ class SentinelService:
         for chunk in chunks:
             self.process_chunk(container_id=container_id, container_name=container_name, chunk_text=chunk.text)
 
-    def process_chunk(self, *, container_id: str, container_name: str, chunk_text: str) -> AnalysisEvent:
+    def process_chunk(
+        self,
+        *,
+        container_id: str,
+        container_name: str,
+        chunk_text: str,
+        coalesce: bool = True,
+    ) -> AnalysisEvent:
         settings = self._settings()
         prefilter = self._prefilter()
         matched_keywords = prefilter.match(chunk_text)
@@ -206,6 +215,21 @@ class SentinelService:
                 self.event_repo.add(event)
                 db.session.commit()
                 return event
+
+        # --- Coalescing: hold chunks per-container in a sliding window ---
+        coalesce_window = settings.chunk_coalesce_window_seconds
+        if coalesce and coalesce_window > 0 and self.coalescer is not None:
+            self.coalescer.enqueue(
+                container_id=container_id,
+                container_name=container_name,
+                chunk_text=chunk_text,
+                window_seconds=coalesce_window,
+            )
+            event.status = "queued"
+            event.classification = "noise"
+            self.event_repo.add(event)
+            db.session.commit()
+            return event
 
         sentinel_system = self._prompt(PromptKey.SENTINEL_SYSTEM)
         sentinel_analysis = self._prompt(PromptKey.SENTINEL_ANALYSIS)
@@ -283,4 +307,23 @@ class SentinelService:
             container_id=container.id,
             container_name=container.name,
             chunk_text=chunk_text,
+            coalesce=False,
+        )
+
+    def flush_coalesced(
+        self, container_id: str, container_name: str, chunks: list[str]
+    ) -> AnalysisEvent | None:
+        if not chunks:
+            return None
+        settings = self._settings()
+        separator = "\n\n--- next chunk ---\n\n"
+        combined = separator.join(chunks)
+        if len(combined) > settings.max_input_chars:
+            combined = combined[-settings.max_input_chars:]
+        header = f"[coalesced batch of {len(chunks)} chunk(s)]\n"
+        return self.process_chunk(
+            container_id=container_id,
+            container_name=container_name,
+            chunk_text=header + combined,
+            coalesce=False,
         )

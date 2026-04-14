@@ -16,6 +16,7 @@ from app.services.cli_backends import CLIBackendRunner
 from app.services.coordinator import RuntimeCoordinator
 from app.services.llm_call import LLMCallService
 from app.services.llm_client import LLMClient
+from app.services.chunk_coalescer import ChunkCoalescer
 from app.services.sentinel import SentinelService
 from app.services.telegram import TelegramNotifier
 from app.services.verdict_parser import VerdictParser
@@ -53,6 +54,8 @@ def build_container(app: Flask) -> ServiceContainer:
         prompt_repo=prompt_repo,
         exclusion_repo=exclusion_repo,
     )
+    coalescer = ChunkCoalescer(app=app, on_flush=sentinel_service.flush_coalesced)
+    sentinel_service.coalescer = coalescer
     briefing_service = BriefingService(
         llm_call_service=llm_call_service,
         event_repo=event_repo,

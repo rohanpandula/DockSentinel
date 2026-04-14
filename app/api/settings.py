@@ -35,6 +35,7 @@ _ALLOWED_FIELDS = {
     "container_rate_limit_count",
     "container_rate_limit_window_seconds",
     "keyword_flush_delay_lines",
+    "chunk_coalesce_window_seconds",
 }
 
 
