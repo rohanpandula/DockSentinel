@@ -115,8 +115,13 @@
             <input class="input mono" data-tryllm-field="base_url" placeholder="leave blank to use Settings" />
           </label>
           <label class="field">
-            <span class="field__label">Model override</span>
-            <input class="input mono" data-tryllm-field="model" placeholder="leave blank to use Settings" />
+            <span class="field__label">Model</span>
+            <select class="input mono" data-tryllm-model-select data-tryllm-field="model">
+              <option value="">(inherit from Settings)</option>
+              <option value="__custom__">Custom…</option>
+            </select>
+            <input class="input mono mt-md" data-tryllm-model-custom placeholder="type a model name" hidden />
+            <span class="text-tertiary" data-tryllm-model-hint style="font-size:11px; margin-top:4px;">Loading Ollama model list…</span>
           </label>
           <label class="field">
             <span class="field__label">API key override</span>
@@ -148,8 +153,11 @@
         </div>
 
         <div data-tryllm-result class="mt-md" hidden>
-          <div class="row row--between" style="margin-bottom:8px;">
-            <span class="eyebrow">Response</span>
+          <div class="row row--between" style="margin-bottom:8px; align-items:flex-start; gap:16px;">
+            <div>
+              <div class="eyebrow" style="margin-bottom:4px;">Response from</div>
+              <div class="text-mono" data-tryllm-model style="color: var(--accent); font-size:13px; word-break:break-all;"></div>
+            </div>
             <span class="text-tertiary text-mono" style="font-size:11px;" data-tryllm-meta></span>
           </div>
           <pre class="report-view" style="max-height:50vh;" data-tryllm-body></pre>

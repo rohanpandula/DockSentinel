@@ -71,6 +71,58 @@ function wireAnalyzeForm() {
   reveal();
 }
 
+function formatBytes(n) {
+  if (!n || n < 0) return "";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let i = 0;
+  while (n >= 1024 && i < units.length - 1) { n /= 1024; i += 1; }
+  return `${n.toFixed(n >= 100 ? 0 : 1)} ${units[i]}`;
+}
+
+async function loadOllamaModels(root) {
+  const select = root.querySelector("[data-tryllm-model-select]");
+  const hint = root.querySelector("[data-tryllm-model-hint]");
+  const baseEl = root.querySelector('[data-tryllm-field="base_url"]');
+  if (!select) return;
+
+  const params = new URLSearchParams();
+  if (baseEl && baseEl.value.trim()) params.set("base_url", baseEl.value.trim());
+
+  try {
+    const resp = await fetch(`/api/ollama/models?${params.toString()}`);
+    const data = await resp.json();
+    if (!resp.ok || !data.ok) {
+      if (hint) hint.textContent = `Could not reach Ollama: ${(data && data.error) || resp.status}`;
+      return;
+    }
+    const models = data.models || [];
+    const currentValue = select.value;
+    [...select.querySelectorAll("option.dyn")].forEach((o) => o.remove());
+    const customOpt = select.querySelector('option[value="__custom__"]');
+    const beforeCustom = customOpt || null;
+    for (const m of models) {
+      const opt = document.createElement("option");
+      opt.value = m.name;
+      opt.textContent = m.loaded
+        ? `● ${m.name}${m.size ? " — " + formatBytes(m.size) : ""} (loaded)`
+        : `  ${m.name}${m.size ? " — " + formatBytes(m.size) : ""}`;
+      opt.className = "dyn";
+      select.insertBefore(opt, beforeCustom);
+    }
+    if (currentValue && [...select.options].some((o) => o.value === currentValue)) {
+      select.value = currentValue;
+    }
+    if (hint) {
+      const loaded = data.loaded || [];
+      hint.textContent = loaded.length
+        ? `${models.length} models · loaded right now: ${loaded.join(", ")}`
+        : `${models.length} models · none loaded (first call will load one)`;
+    }
+  } catch (err) {
+    if (hint) hint.textContent = `Could not reach Ollama: ${err.message || err}`;
+  }
+}
+
 function wireTryLLM() {
   const root = document.querySelector("[data-tryllm]");
   if (!root) return;
@@ -81,7 +133,28 @@ function wireTryLLM() {
   const resultEl = root.querySelector("[data-tryllm-result]");
   const bodyEl = root.querySelector("[data-tryllm-body]");
   const metaEl = root.querySelector("[data-tryllm-meta]");
+  const modelEl = root.querySelector("[data-tryllm-model]");
+  const modelSelect = root.querySelector("[data-tryllm-model-select]");
+  const modelCustom = root.querySelector("[data-tryllm-model-custom]");
+  const baseEl = root.querySelector('[data-tryllm-field="base_url"]');
   if (!runBtn || !promptEl) return;
+
+  loadOllamaModels(root);
+  if (baseEl) {
+    let t;
+    baseEl.addEventListener("input", () => {
+      clearTimeout(t);
+      t = setTimeout(() => loadOllamaModels(root), 400);
+    });
+  }
+
+  if (modelSelect && modelCustom) {
+    modelSelect.addEventListener("change", () => {
+      const isCustom = modelSelect.value === "__custom__";
+      modelCustom.hidden = !isCustom;
+      if (isCustom) modelCustom.focus();
+    });
+  }
 
   runBtn.addEventListener("click", async () => {
     const prompt = (promptEl.value || "").trim();
@@ -91,9 +164,19 @@ function wireTryLLM() {
     }
     const payload = { prompt };
     root.querySelectorAll("[data-tryllm-field]").forEach((el) => {
+      if (el === modelSelect) return; // handled below
       const v = (el.value || "").trim();
       if (v) payload[el.dataset.tryllmField] = v;
     });
+    if (modelSelect) {
+      const picked = modelSelect.value;
+      if (picked === "__custom__") {
+        const custom = (modelCustom && modelCustom.value || "").trim();
+        if (custom) payload.model = custom;
+      } else if (picked) {
+        payload.model = picked;
+      }
+    }
 
     runBtn.disabled = true;
     setOutputState(statusEl, "pending", "Calling LLM…");
@@ -108,9 +191,11 @@ function wireTryLLM() {
       const roundtrip = Math.round(performance.now() - started);
       if (resp.ok && data.ok) {
         bodyEl.textContent = data.content || "(empty response)";
-        metaEl.textContent = `${data.model || "unknown"} · server ${data.latency_ms || "?"}ms · roundtrip ${roundtrip}ms`;
+        if (modelEl) modelEl.textContent = data.model || "unknown";
+        metaEl.textContent = `server ${data.latency_ms || "?"}ms · roundtrip ${roundtrip}ms`;
         resultEl.hidden = false;
         setOutputState(statusEl, "ok", "Done");
+        loadOllamaModels(root); // refresh loaded-state
       } else {
         setOutputState(statusEl, "error", (data && data.error) || `HTTP ${resp.status}`);
       }
