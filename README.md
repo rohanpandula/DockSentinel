@@ -2,20 +2,37 @@
 
 DockSentinel is a self-hosted AIOps observability agent for Docker environments. It monitors container logs in near real-time, filters noise, uses either OpenAI-compatible APIs or CLI-based LLM backends for semantic triage, sends Telegram alerts for critical failures, and generates nightly health briefings.
 
+![Overview dashboard](docs/screenshots/overview.png)
+
 ## Features
 
+- **Minimalist ops dashboard** — custom design system, Geist typography, single-accent palette, tabular numerics, proper empty/loading/error states
 - Dual LLM transports:
-  - API mode (OpenAI-compatible `base_url` + `api_key` + `model`)
+  - API mode (any OpenAI-compatible endpoint — Ollama, vLLM, OpenAI, etc.)
   - CLI mode (pluggable backends: `codex`, `claude`, `gemini`, `ollama`)
 - Real-time Sentinel watchdog with Docker event-driven auto attach/detach
 - Sliding-window log buffering with char/token budget limits
 - Heuristic prefilter with word-boundary matching and JSON false-positive suppression
 - LLM call reduction: chunk dedup, per-container rate limiting, keyword batching
+- **Per-container sliding-window coalescing** — hold matched chunks for N seconds per container, reset on each new arrival, then ship the whole batch to the LLM in a single call
 - Single-concurrency lock for CLI backend calls (one call at a time globally)
 - Prompt Engineering Studio (editable, versioned prompt templates)
 - Telegram critical alerts with cooldown and global rate limiting
 - Nightly briefing generation and report archive
-- Flask + Tailwind dashboard for full configuration and operations
+- **mDNS publishing** — opt-in `<hostname>.local` resolution via zeroconf (no avahi/dbus needed)
+- **Container dropdown** on the Overview — pick from running containers or type a name manually
+- Hardened container: non-root (uid 1000), `HEALTHCHECK`, named volume
+
+## Screenshots
+
+| | |
+| --- | --- |
+| **Overview** — sentinel status, today's counts, recent events, analyze-now form | **Events** — searchable archive with root-cause & fix suggestions |
+| ![](docs/screenshots/overview.png) | ![](docs/screenshots/events.png) |
+| **Settings** — grouped into LLM, input budgets, alerts/rate-limits, scheduler | **Prompts** — edit versioned prompt templates |
+| ![](docs/screenshots/settings.png) | ![](docs/screenshots/prompts.png) |
+| **Reports** — nightly briefings archive | **Exclusions** — container patterns to skip |
+| ![](docs/screenshots/reports.png) | ![](docs/screenshots/exclusions.png) |
 
 ## Architecture
 
@@ -94,10 +111,25 @@ Copy `.env.example` and adjust values as needed.
 - `RUNTIME_LOCK_PATH` default (development): `./data/runtime.lock`
 - `START_COORDINATOR` default: `true`
 - `CLI_BACKENDS_DIR` default: `/app/llm-backends` in Docker
-- `DOCKER_HOST` – set to a `tcp://` address to use a remote Docker daemon (the default compose uses `tcp://host.docker.internal:23751` for a local Socat/TCP tunnel instead of the Docker socket)
-- `CODEX_HOME` – path to Codex credentials directory (mounted in the default compose)
-- `GEMINI_HOME` – path to Gemini CLI credentials directory (mounted in the default compose)
+- `DOCKER_HOST` – Docker daemon endpoint; default is the local socket (`unix:///var/run/docker.sock`). Set to a `tcp://` address to use a remote daemon
+- `APP_PORT` – port Flask binds to inside the container (default `5000`). Set to `80` for macvlan deployments where the container gets its own LAN IP
+- `MDNS_ENABLED` – set to `true` to publish `<hostname>.local` via multicast DNS
+- `MDNS_HOSTNAME` – the name to advertise (default `docksentinel`)
+- `MDNS_PORT` – port advertised in the `_http._tcp.local.` service record
 - `SECRET_KEY` **required** in non-development environments; must be ≥ 16 characters and not a placeholder value (e.g. `change-me`, `dev-secret-key`)
+
+## Coalescing Noisy Containers
+
+Set `chunk_coalesce_window_seconds` in Settings (default `0` = disabled) to hold matched log chunks per container in a sliding window. Each new matching chunk for the same container resets the timer; when the window elapses without new arrivals, the entire batch ships to the LLM in a single call and produces **one** summarized alert instead of dozens. A good starting value is `300` (five minutes).
+
+## Unraid / macvlan Deployment
+
+See `docker-compose.unraid.example.yml` for a reference config. Highlights:
+
+- Gives the container its own LAN IP on `br0` (no host port mapping)
+- Binds Flask to port 80 via `sysctls: net.ipv4.ip_unprivileged_port_start=80` — no root required
+- Publishes `docksentinel.local` via mDNS
+- Mounts the docker socket read-only and grants `group_add: [281]` so the non-root process can read it (verify the docker GID on your host)
 
 ## API Endpoints
 
