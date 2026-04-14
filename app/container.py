@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from app.repositories.prompts import PromptRepository
     from app.repositories.reports import ReportRepository
     from app.repositories.settings import SettingsRepository
+    from app.services.alerts import AlertService, AlertStrategy
 
 _KEY_MAP: dict[str, str] = {
     "telegram": "telegram_notifier",
@@ -21,6 +22,8 @@ class ServiceContainer:
     llm_call: Any
     verdict_parser: Any
     telegram_notifier: Any
+    alert_strategy: AlertStrategy
+    alert_service: AlertService
     sentinel: Any
     briefing: Any
     coordinator: Any

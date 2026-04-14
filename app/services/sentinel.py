@@ -6,7 +6,7 @@ from typing import Any, TYPE_CHECKING
 
 import docker
 
-from app.config_objects import LLMConfig
+from app.config_objects import AlertConfig, LLMConfig
 from app.extensions import db
 from app.models import AnalysisEvent, PromptKey, PromptTemplate, SentinelState, Settings
 from app.services.llm_call import LLMCallService
@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from app.repositories.analysis_events import AnalysisEventRepository
     from app.repositories.exclusions import ExclusionRepository
     from app.repositories.prompts import PromptRepository
+    from app.services.alerts import AlertService
 
 
 class SentinelService:
@@ -25,14 +26,14 @@ class SentinelService:
         self,
         llm_call_service: LLMCallService,
         verdict_parser: Any,
-        telegram_notifier: Any,
+        alert_service: "AlertService",
         event_repo: "AnalysisEventRepository",
         prompt_repo: "PromptRepository",
         exclusion_repo: "ExclusionRepository",
     ) -> None:
         self.llm_call_service = llm_call_service
         self.verdict_parser = verdict_parser
-        self.telegram_notifier = telegram_notifier
+        self.alert_service = alert_service
         self.event_repo = event_repo
         self.prompt_repo = prompt_repo
         self.exclusion_repo = exclusion_repo
@@ -253,7 +254,9 @@ class SentinelService:
         event.confidence = verdict.confidence
 
         if verdict.classification == "critical":
-            sent, alert_error = self._send_alert_if_allowed(event)
+            sent, alert_error = self.alert_service.maybe_send(
+                event, AlertConfig.from_settings(settings)
+            )
             event.alert_sent = sent
             event.alert_error = alert_error
 
@@ -261,32 +264,6 @@ class SentinelService:
         db.session.commit()
         self.mark_runtime_running()
         return event
-
-    def _send_alert_if_allowed(self, event: AnalysisEvent) -> tuple[bool, str | None]:
-        settings = self._settings()
-
-        cooldown_since = utcnow_naive() - timedelta(minutes=settings.alert_cooldown_minutes)
-        duplicate = self.event_repo.find_alert_duplicate(event.chunk_hash, cooldown_since)
-        if duplicate:
-            return False, "duplicate alert suppressed by cooldown"
-
-        window_since = utcnow_naive() - timedelta(seconds=settings.alert_rate_limit_window_seconds)
-        recent_alerts = self.event_repo.count_recent_alerts(window_since)
-
-        if recent_alerts >= settings.alert_rate_limit_count:
-            return False, "global rate limit exceeded"
-
-        message = (
-            f"DockSentinel Critical Alert\n"
-            f"Container: {event.container_name}\n"
-            f"Summary: {event.summary or 'N/A'}\n"
-            f"Fix: {event.fix_suggestion or 'N/A'}"
-        )
-        return self.telegram_notifier.send_message(
-            token=settings.telegram_token or "",
-            chat_id=settings.telegram_chat_id or "",
-            text=message,
-        )
 
     def analyze_container_now(self, container_name_or_id: str) -> AnalysisEvent:
         settings = self._settings()

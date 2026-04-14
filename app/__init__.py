@@ -24,6 +24,7 @@ from app.repositories.exclusions import ExclusionRepository
 from app.repositories.prompts import PromptRepository
 from app.repositories.reports import ReportRepository
 from app.repositories.settings import SettingsRepository
+from app.services.alerts import AlertService, TelegramAlertStrategy
 from app.services.briefing import BriefingService
 from app.services.cli_backends import CLIBackendRunner
 from app.services.coordinator import RuntimeCoordinator
@@ -308,10 +309,12 @@ def create_app() -> Flask:
     prompt_repo = PromptRepository()
     report_repo = ReportRepository()
     exclusion_repo = ExclusionRepository()
+    alert_strategy = TelegramAlertStrategy(telegram_notifier)
+    alert_service = AlertService(strategy=alert_strategy, event_repo=event_repo)
     sentinel_service = SentinelService(
         llm_call_service=llm_call_service,
         verdict_parser=verdict_parser,
-        telegram_notifier=telegram_notifier,
+        alert_service=alert_service,
         event_repo=event_repo,
         prompt_repo=prompt_repo,
         exclusion_repo=exclusion_repo,
@@ -329,6 +332,8 @@ def create_app() -> Flask:
         llm_call=llm_call_service,
         verdict_parser=verdict_parser,
         telegram_notifier=telegram_notifier,
+        alert_strategy=alert_strategy,
+        alert_service=alert_service,
         sentinel=sentinel_service,
         briefing=briefing_service,
         coordinator=coordinator,
