@@ -24,6 +24,11 @@ class DummyTelegram:
         return True, None
 
 
+class _FakeAlertStrategy:
+    def send(self, message, config):
+        return True, None
+
+
 
 def _build_app(tmp_path, monkeypatch):
     monkeypatch.setenv("TESTING", "true")
@@ -39,7 +44,7 @@ def test_sentinel_critical_pipeline(tmp_path, monkeypatch):
     with app.app_context():
         sentinel = app.extensions["services"].sentinel
         sentinel.llm_call_service._client = DummyLLM()
-        sentinel.telegram_notifier = DummyTelegram()
+        sentinel.alert_service.strategy = _FakeAlertStrategy()
         sentinel.set_enabled(True)
 
         event = sentinel.process_chunk(
@@ -63,7 +68,7 @@ def test_sentinel_rate_limit_suppresses_alert(tmp_path, monkeypatch):
     with app.app_context():
         sentinel = app.extensions["services"].sentinel
         sentinel.llm_call_service._client = DummyLLM()
-        sentinel.telegram_notifier = DummyTelegram()
+        sentinel.alert_service.strategy = _FakeAlertStrategy()
         sentinel.set_enabled(True)
 
         settings = Settings.singleton()
@@ -127,7 +132,7 @@ def test_sentinel_cooldown_suppresses_duplicate_alert(tmp_path, monkeypatch):
     with app.app_context():
         sentinel = app.extensions["services"].sentinel
         sentinel.llm_call_service._client = DummyLLM()
-        sentinel.telegram_notifier = DummyTelegram()
+        sentinel.alert_service.strategy = _FakeAlertStrategy()
         sentinel.set_enabled(True)
 
         # Disable chunk dedup so both calls reach the LLM and test alert cooldown.
@@ -158,7 +163,7 @@ def test_sentinel_dedup_skips_duplicate_chunk(tmp_path, monkeypatch):
     with app.app_context():
         sentinel = app.extensions["services"].sentinel
         sentinel.llm_call_service._client = DummyLLM()
-        sentinel.telegram_notifier = DummyTelegram()
+        sentinel.alert_service.strategy = _FakeAlertStrategy()
         sentinel.set_enabled(True)
 
         settings = Settings.singleton()
@@ -187,7 +192,7 @@ def test_sentinel_per_container_rate_limit(tmp_path, monkeypatch):
     with app.app_context():
         sentinel = app.extensions["services"].sentinel
         sentinel.llm_call_service._client = DummyLLM()
-        sentinel.telegram_notifier = DummyTelegram()
+        sentinel.alert_service.strategy = _FakeAlertStrategy()
         sentinel.set_enabled(True)
 
         settings = Settings.singleton()
