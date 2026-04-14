@@ -83,4 +83,12 @@ def create_app() -> Flask:
         coordinator.start()
         atexit.register(coordinator.stop)
 
+    if os.environ.get("MDNS_ENABLED", "false").lower() == "true" and not app.config["TESTING"]:
+        from app.services.mdns import MDNSPublisher
+        hostname = os.environ.get("MDNS_HOSTNAME", "docksentinel")
+        port = int(os.environ.get("MDNS_PORT", "80"))
+        publisher = MDNSPublisher(hostname=hostname, port=port)
+        publisher.start()
+        atexit.register(publisher.stop)
+
     return app
