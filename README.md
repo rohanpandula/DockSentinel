@@ -1,98 +1,232 @@
 # DockSentinel
 
-DockSentinel is a self-hosted AIOps observability agent for Docker environments. It monitors container logs in near real-time, filters noise, uses either OpenAI-compatible APIs or CLI-based LLM backends for semantic triage, sends Telegram alerts for critical failures, and generates nightly health briefings.
+Self-hosted AIOps observability agent for Docker. It watches container logs in near real-time, routes keyword-matched chunks through an LLM for semantic triage, coalesces noise per-container, fires actionable Telegram alerts with an inline decision keyboard, and keeps a local issue tracker of every decision you make.
 
 ![Overview dashboard](docs/screenshots/overview.png)
 
-## Features
+## Highlights
 
-- **Minimalist ops dashboard** — custom design system, Geist typography, single-accent palette, tabular numerics, proper empty/loading/error states
-- Dual LLM transports:
-  - API mode (any OpenAI-compatible endpoint — Ollama, vLLM, OpenAI, etc.)
-  - CLI mode (pluggable backends: `codex`, `claude`, `gemini`, `ollama`)
-- Real-time Sentinel watchdog with Docker event-driven auto attach/detach
-- Sliding-window log buffering with char/token budget limits
-- Heuristic prefilter with word-boundary matching and JSON false-positive suppression
-- LLM call reduction: chunk dedup, per-container rate limiting, keyword batching
-- **Per-container sliding-window coalescing** — hold matched chunks for N seconds per container, reset on each new arrival, then ship the whole batch to the LLM in a single call
-- Single-concurrency lock for CLI backend calls (one call at a time globally)
-- Prompt Engineering Studio (editable, versioned prompt templates)
-- Telegram critical alerts with cooldown and global rate limiting
-- Nightly briefing generation and report archive
-- **mDNS publishing** — opt-in `<hostname>.local` resolution via zeroconf (no avahi/dbus needed)
-- **Container dropdown** on the Overview — pick from running containers or type a name manually
-- Hardened container: non-root (uid 1000), `HEALTHCHECK`, named volume
+- **Actionable Telegram alerts** — every critical alert arrives with a concrete fix (exact `docker` / shell commands or config changes) and three inline buttons: `Reject`, `Approve`, `Discuss`.
+- **Local issue tracker** — `Approve` creates an open issue. `Discuss` opens a threaded LLM conversation about the specific event. Query everything at `/issues` or via `GET /api/issues`.
+- **Per-container sliding-window coalescing** — hold matched chunks for N seconds per container; every new chunk resets the timer; flush ships the whole batch in **one** LLM call. Turns crashloop spam into a single summary.
+- **Dual LLM transports** — OpenAI-compatible API (Ollama, vLLM, OpenAI, OpenRouter, …) or pluggable CLI backends (`codex`, `claude`, `gemini`, `ollama`).
+- **Self-discovery on the LAN** — publishes `<hostname>.local` via in-process mDNS (zeroconf). No avahi, no dbus, no webhook, no public URL.
+- **Hardened container** — runs as non-root `appuser` (uid 1000), `HEALTHCHECK`, named volume, optional port-80 binding via `sysctls`.
+- **Nightly health briefings** — APScheduler job generates a markdown report of the day's events, stored in SQLite and browsable at `/reports`.
+- **Prompt Engineering Studio** — every prompt used by the pipeline is editable and versioned in SQLite. Test changes without redeploying.
 
 ## Screenshots
 
 | | |
 | --- | --- |
-| **Overview** — sentinel status, today's counts, recent events, analyze-now form | **Events** — searchable archive with root-cause & fix suggestions |
+| **Overview** — sentinel state, today's counts, recent events, analyze-now | **Events** — searchable archive with root-cause & fix per event |
 | ![](docs/screenshots/overview.png) | ![](docs/screenshots/events.png) |
-| **Settings** — grouped into LLM, input budgets, alerts/rate-limits, scheduler | **Prompts** — edit versioned prompt templates |
-| ![](docs/screenshots/settings.png) | ![](docs/screenshots/prompts.png) |
-| **Reports** — nightly briefings archive | **Exclusions** — container patterns to skip |
-| ![](docs/screenshots/reports.png) | ![](docs/screenshots/exclusions.png) |
+| **Issues** — local issue tracker populated by Telegram button taps | **Settings** — LLM, input budgets, alerts, scheduler |
+| ![](docs/screenshots/issues.png) | ![](docs/screenshots/settings.png) |
+| **Reports** — nightly briefings archive | **Prompts** — versioned prompt templates |
+| ![](docs/screenshots/reports.png) | ![](docs/screenshots/prompts.png) |
+| **Exclusions** — container patterns to skip | |
+| ![](docs/screenshots/exclusions.png) | |
 
-## Architecture
+## How It Works
 
-- Flask + Jinja2 web app
-- SQLite persistence (`/data/docksentinel.db` by default)
-- RuntimeCoordinator with file lock (`/data/runtime.lock`) to prevent duplicate watchdog/scheduler threads
-- Docker SDK for events and live logs (local socket or remote `DOCKER_HOST`)
-- APScheduler for nightly report jobs
-
-## Project Layout
-
-```text
-app/
-  api/          # Flask API blueprints
-  models/       # SQLAlchemy models
-  services/     # Coordinator, sentinel, LLM client, CLI backends, etc.
-  templates/    # Jinja2 HTML pages
-  static/       # Frontend JS
-llm-backends/   # Pluggable CLI backend scripts (stdin->stdout contract)
-tests/
-Dockerfile
-docker-compose.yml
-requirements.txt
+```
+Docker events ─▶ DockerWatcher ─▶ per-container log stream
+                                      │
+                                      ▼
+                           LogBuffer (char/token budget)
+                                      │
+                     ┌────────────────┴────────────────┐
+                     ▼                                 ▼
+              Prefilter (keyword                 (no match → drop)
+              + word boundary, JSON
+              false-positive guard)
+                     │
+                     ▼
+              Dedup + per-container rate limit
+                     │
+                     ▼
+          ChunkCoalescer (optional, per-container
+          sliding window — batch chunks before LLM)
+                     │
+                     ▼
+                LLM (API or CLI)
+                     │
+                     ▼
+             VerdictParser (strict JSON)
+                     │
+            ┌────────┴────────┐
+            ▼                 ▼
+       Persist event    Alerter (if critical)
+       to SQLite        │
+                        ▼
+                  Telegram message
+                  + [Reject] [Approve] [Discuss]
+                        │
+                        ▼
+                 TelegramBot (long-poll)
+                        │
+                        ▼
+                LocalIssue (open / discussing / rejected)
 ```
 
 ## Requirements
 
 - Python 3.12+
 - Docker and Docker Compose
-- For CLI mode: relevant CLI installed/authenticated (`codex`, `claude`, `gemini`, or `ollama`)
+- For CLI-backend mode: the relevant CLI installed and authenticated on the host
 
 ## Quick Start (Docker Compose)
 
 ```bash
 git clone https://github.com/rohanpandula/DockSentinel.git
 cd DockSentinel
+export SECRET_KEY=$(openssl rand -hex 32)
 docker compose up -d --build
 ```
 
-Open the UI at [http://localhost:5000](http://localhost:5000).
+Open [http://localhost:5050](http://localhost:5050).
 
-Default compose mapping in this repo is [http://localhost:5050](http://localhost:5050).
+The default compose mounts `/var/run/docker.sock` read-only so DockSentinel can observe your containers, and exposes Flask on host port `5050`.
 
-## CLI Backend Mode (No API usage)
+## Unraid / macvlan Deployment
 
-1. In Settings, set:
-   - `LLM Transport` = `cli`
-   - `CLI Backend` = `codex` (or another installed backend)
-2. Tune:
-   - `CLI Timeout Seconds`
-   - `CLI Max Retries`
-3. Click `Test LLM` to verify backend execution.
+See `docker-compose.unraid.example.yml` for a reference config. The container gets its own LAN IP on `br0`, binds port 80 via `sysctls`, and publishes itself as `<hostname>.local`. A minimal recipe:
 
-Backend wrappers live in `llm-backends/` and follow a simple stdin/stdout contract:
+```bash
+# On the Unraid host:
+mkdir -p /mnt/user/appdata/docksentinel
+# …copy the repo and .env with SECRET_KEY into that path…
+cd /mnt/user/appdata/docksentinel
+docker compose -f docker-compose.unraid.yml up -d --build
+```
 
-- Script reads one prompt from **stdin**
-- Script writes the model response to **stdout**
-- Non-zero exit code signals failure
+Then open `http://docksentinel.local` from any Bonjour/Avahi-aware device on the LAN.
 
-To add a new backend, create `llm-backends/<name>.sh`, make it executable, and it will appear as an option.
+Gotchas:
+- Adjust `group_add` to your host's `docker` group GID (Unraid's default is `281`; run `getent group docker` on another host to verify).
+- Pick a free IP in your `br0` subnet for `networks.br0.ipv4_address`.
+- Without macvlan, the vanilla `docker-compose.yml` works via host port mapping.
+
+## Telegram Alerts + Inline Decisions
+
+1. Create a bot with [@BotFather](https://t.me/BotFather), note its token and your chat id.
+2. Open `Settings`, paste `telegram_token` and `telegram_chat_id`, and click **Test Telegram** to confirm delivery.
+3. Enable the Sentinel from the Overview page.
+
+When a critical event fires, your Telegram receives:
+
+```
+🚨 CRITICAL · <container>
+━━━━━━━━━━━━━━━━
+<one-sentence summary>
+
+ROOT CAUSE
+<specific hypothesis>
+
+SUGGESTED FIX
+1. <exact command>
+2. <next step>
+
+Confidence: 0.87
+Event ID: 923
+
+[✕ Reject] [✓ Approve] [💬 Discuss]
+```
+
+Tap behaviour:
+- **Reject** — records a `rejected` `LocalIssue`, strips the keyboard, sends confirmation in-thread.
+- **Approve** — records an `open` `LocalIssue` (title = summary, body = markdown with root cause + fix + excerpt) and replies with the issue number.
+- **Discuss** — records a `discussing` `LocalIssue` and prompts you to reply. Your next reply (threaded to that prompt) is fed to the LLM with the full event context and answered in-thread. Keep replying to keep the conversation alive.
+
+The bot uses long-polling (`getUpdates`) — **no webhook, no public URL, no tunnel required**. It works on a private LAN out of the box.
+
+## Coalescing Noisy Containers
+
+Set `chunk_coalesce_window_seconds` (Settings → *Alerts & rate limits* or `PUT /api/settings`) to hold matched log chunks per container in a sliding window. Every new matching chunk resets the timer; when the window elapses without new arrivals, the batch ships as a single LLM call and produces **one** summarized alert instead of dozens. `0` disables; `300` (five minutes) is a good starting value for a noisy homelab.
+
+## CLI Backend Mode (no API keys)
+
+1. In Settings, set `LLM Transport = cli` and pick a `CLI Backend` (`codex`, `claude`, `gemini`, `ollama`).
+2. Click **Test LLM**.
+
+Backend wrappers live in `llm-backends/` and follow a stdin/stdout contract: read one prompt from stdin, write the model response to stdout, exit non-zero on failure. Drop an executable `llm-backends/<name>.sh` in the mount to add a new backend.
+
+## Environment Variables
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `SECRET_KEY` | *(required)* | Flask secret; must be ≥16 chars and not a placeholder |
+| `DATABASE_URL` | `sqlite:///./data/docksentinel.db` | SQLite URI |
+| `RUNTIME_LOCK_PATH` | `./data/runtime.lock` | File lock to prevent duplicate coordinators |
+| `START_COORDINATOR` | `true` | Start the watchdog + scheduler + bot on boot |
+| `DOCKER_HOST` | `unix:///var/run/docker.sock` | Docker daemon endpoint |
+| `CLI_BACKENDS_DIR` | `/app/llm-backends` | Directory containing CLI backend scripts |
+| `APP_PORT` | `5000` | Port Flask binds to inside the container |
+| `MDNS_ENABLED` | `false` | Publish `<hostname>.local` via zeroconf |
+| `MDNS_HOSTNAME` | `docksentinel` | Advertised hostname |
+| `MDNS_PORT` | `5000` | Port advertised in the mDNS service record |
+
+## API Endpoints
+
+```
+GET    /api/health
+GET    /api/settings
+PUT    /api/settings
+POST   /api/settings/test-llm
+POST   /api/telegram/test
+
+GET    /api/sentinel/status
+POST   /api/sentinel/toggle
+POST   /api/sentinel/analyze-now
+
+GET    /api/events
+GET    /api/insights
+GET    /api/reports
+GET    /api/reports/{id}
+POST   /api/reports/generate
+
+GET    /api/issues
+GET    /api/issues/{id}
+PATCH  /api/issues/{id}
+
+GET    /api/exclusions
+POST   /api/exclusions
+DELETE /api/exclusions/{id}
+
+GET    /api/prompts
+PUT    /api/prompts/{key}
+POST   /api/prompts/{key}/reset
+```
+
+Request/response bodies are validated by Pydantic v2 schemas (see `app/schemas/`). Paginated list endpoints accept `limit` and `offset`.
+
+## Project Layout
+
+```
+app/
+  api/            Flask blueprints — one per resource
+  models/         SQLAlchemy ORM models (events, settings, prompts,
+                  reports, exclusions, sentinel state, local issues)
+  repositories/   Data access per aggregate
+  schemas/        Pydantic v2 request/response schemas
+  services/       Sentinel pipeline, alerts, telegram, telegram_bot,
+                  chunk coalescer, briefing, LLM client, CLI backends,
+                  prefilter, log buffer, mdns, coordinator
+  templates/      Jinja2 HTML pages
+  static/         CSS + JS + favicon
+  web/            Server-rendered routes
+llm-backends/     Pluggable CLI backend scripts (stdin → stdout)
+migrations/       Alembic migrations (SQLite-safe via batch mode)
+tests/            pytest suite (46 tests, 80% coverage gate)
+Dockerfile
+docker-compose.yml            Default (local socket, host port 5050)
+docker-compose.unraid.example.yml  Reference for macvlan / LAN IP deploys
+docker-entrypoint.sh
+requirements.txt
+pytest.ini
+alembic.ini
+```
 
 ## Local Development
 
@@ -103,100 +237,91 @@ pip install -r requirements.txt
 flask --app app run --debug
 ```
 
-## Environment Variables
+SQLite lives at `./data/docksentinel.db` by default. Alembic runs on container startup (`alembic upgrade head`); for local dev run it manually after dependency changes:
 
-Copy `.env.example` and adjust values as needed.
+```bash
+alembic upgrade head
+```
 
-- `DATABASE_URL` default (development): `sqlite:///./data/docksentinel.db`
-- `RUNTIME_LOCK_PATH` default (development): `./data/runtime.lock`
-- `START_COORDINATOR` default: `true`
-- `CLI_BACKENDS_DIR` default: `/app/llm-backends` in Docker
-- `DOCKER_HOST` – Docker daemon endpoint; default is the local socket (`unix:///var/run/docker.sock`). Set to a `tcp://` address to use a remote daemon
-- `APP_PORT` – port Flask binds to inside the container (default `5000`). Set to `80` for macvlan deployments where the container gets its own LAN IP
-- `MDNS_ENABLED` – set to `true` to publish `<hostname>.local` via multicast DNS
-- `MDNS_HOSTNAME` – the name to advertise (default `docksentinel`)
-- `MDNS_PORT` – port advertised in the `_http._tcp.local.` service record
-- `SECRET_KEY` **required** in non-development environments; must be ≥ 16 characters and not a placeholder value (e.g. `change-me`, `dev-secret-key`)
+## Testing
 
-## Coalescing Noisy Containers
+```bash
+pytest -q                  # quick
+pytest                     # with coverage report (gated at 80%)
+pytest --cov-report=html   # browse htmlcov/index.html
+```
 
-Set `chunk_coalesce_window_seconds` in Settings (default `0` = disabled) to hold matched log chunks per container in a sliding window. Each new matching chunk for the same container resets the timer; when the window elapses without new arrivals, the entire batch ships to the LLM in a single call and produces **one** summarized alert instead of dozens. A good starting value is `300` (five minutes).
-
-## Unraid / macvlan Deployment
-
-See `docker-compose.unraid.example.yml` for a reference config. Highlights:
-
-- Gives the container its own LAN IP on `br0` (no host port mapping)
-- Binds Flask to port 80 via `sysctls: net.ipv4.ip_unprivileged_port_start=80` — no root required
-- Publishes `docksentinel.local` via mDNS
-- Mounts the docker socket read-only and grants `group_add: [281]` so the non-root process can read it (verify the docker GID on your host)
-
-## API Endpoints
-
-- `GET /api/health`
-- `GET /api/settings`
-- `PUT /api/settings`
-- `POST /api/settings/test-llm`
-- `GET /api/exclusions`
-- `POST /api/exclusions`
-- `DELETE /api/exclusions/{id}`
-- `GET /api/prompts`
-- `PUT /api/prompts/{key}`
-- `POST /api/prompts/{key}/reset`
-- `GET /api/sentinel/status`
-- `POST /api/sentinel/toggle`
-- `POST /api/sentinel/analyze-now`
-- `GET /api/insights`
-- `GET /api/reports`
-- `GET /api/reports/{id}`
-- `POST /api/reports/generate`
-- `POST /api/telegram/test`
+The suite (46 tests) covers:
+- API endpoints (health, settings, sentinel, reports, issues, prompts, exclusions)
+- Request/response schema parity and pagination
+- Sentinel pipeline — critical path, cooldown dedup, chunk dedup, per-container rate limiting
+- Prefilter word-boundary + JSON-benign filtering
+- Log buffer keyword batching
+- Briefing fallback
+- Runtime lock health checks
+- CLI backend runner
+- LLM client
+- Pipeline integration end-to-end
 
 ## Prompt Templates
 
-Seeded on first startup:
+Seeded on first startup and editable from `/prompts`:
 
-- `SENTINEL_SYSTEM`
-- `SENTINEL_ANALYSIS`
-- `JSON_OUTPUT_GUARD`
-- `NIGHTLY_SYSTEM`
-- `NIGHTLY_REPORT`
+- `SENTINEL_SYSTEM` — system role for triage
+- `SENTINEL_ANALYSIS` — the JSON-output instruction (demands concrete fix commands)
+- `JSON_OUTPUT_GUARD` — strict-JSON guard rail
+- `NIGHTLY_SYSTEM` — system role for nightly briefings
+- `NIGHTLY_REPORT` — briefing structure
 
-Prompts are editable from the Prompt Studio page and versioned in SQLite.
+Every prompt is versioned in SQLite; edits take effect on the next LLM call.
+
+## LLM Call Reduction Layers
+
+DockSentinel stacks multiple guards before spending an LLM token:
+
+| Guard | Setting | Default | What it does |
+|---|---|---|---|
+| Word-boundary prefilter | `keyword_list` | `error,exception,fatal,panic,critical,refused,timeout` | Skips compound identifiers and JSON keys |
+| Keyword flush delay | `keyword_flush_delay_lines` | `5` | Collects trailing context after a keyword hit |
+| Chunk dedup (SHA-256) | `dedup_window_seconds` | `300` | Same chunk already analyzed recently? Skip |
+| Per-container rate limit | `container_rate_limit_count` / `_window_seconds` | `10` / `3600` | Hard cap per container per rolling hour |
+| Coalesce window | `chunk_coalesce_window_seconds` | `0` (off) | Batch per-container chunks, one LLM call per window |
+| Alert cooldown | `alert_cooldown_minutes` | `10` | Suppress duplicate alerts by chunk hash |
+| Alert rate limit | `alert_rate_limit_count` / `_window_seconds` | `20` / `300` | Global cap on notifications |
+
+All configurable from Settings or `PUT /api/settings`.
 
 ## Default Exclusions
 
-Seeded on first startup:
+Seeded on first startup — patterns the Sentinel will not attach to:
 
 - `docksentinel`
 - `ollama`
 - `portainer`
 - `open-webui`
 
-## Docker Host / Remote Docker
+Edit the list at `/exclusions` or via the Exclusions API.
 
-The default `docker-compose.yml` connects to the Docker daemon via a TCP tunnel (`DOCKER_HOST=tcp://host.docker.internal:23751`) rather than mounting `/var/run/docker.sock`. This avoids socket permission issues and works well with Socat-based Docker TCP proxies. To use a direct socket mount instead, remove the `DOCKER_HOST` env var and add a volume for `/var/run/docker.sock`.
+## Data Model
 
-## LLM Call Reduction
+- `analysis_events` — every processed chunk (whether triaged, deduped, rate-limited, or coalesced)
+- `daily_reports` — nightly briefing outputs
+- `settings` — singleton config row (`id=1`)
+- `sentinel_state` — runtime state (enabled, runtime_status, started_at, llm_failure_count, last_error)
+- `exclusion_rules` — container name patterns to skip
+- `prompt_templates` — versioned editable prompts
+- `local_issues` — issues created from Telegram decisions (open / discussing / rejected / closed) with threaded discussion transcripts
 
-DockSentinel includes several layers to minimize unnecessary LLM calls:
+## Tech Stack
 
-- **Prefilter word-boundary matching** — keywords like `error` only match whole words, not JSON keys like `"error":0` or compound identifiers like `error_count`
-- **Chunk dedup** — if the same log content (by SHA-256 hash) was already analyzed within the configurable dedup window, the duplicate is skipped (`dedup_window_seconds`, default 300)
-- **Per-container rate limiting** — each container is capped at N LLM calls per rolling window (`container_rate_limit_count` / `container_rate_limit_window_seconds`, default 10 per hour)
-- **Keyword flush delay** — after a keyword hit, the log buffer collects additional context lines before flushing to the LLM (`keyword_flush_delay_lines`, default 5)
+Flask 3, SQLAlchemy 2, Alembic, Pydantic v2 (+ Flask-Pydantic), APScheduler, Docker SDK, httpx, tiktoken, zeroconf, pytest + pytest-cov. Python 3.12-slim base image, non-root runtime.
 
-All settings are configurable from the Settings page or via `PUT /api/settings`.
+## License
 
-## Testing
+No `LICENSE` file is currently committed. Until one is added, default copyright applies — all rights reserved. Add your preferred license before accepting external contributions.
 
-```bash
-python -m pytest -q
-```
+## Security Notes
 
-The test suite contains 31 tests covering API endpoints, sentinel pipeline (including excluded-event recording, cooldown dedup, chunk dedup, per-container rate limiting), prefilter word-boundary and JSON-benign filtering, log buffer keyword batching, briefing fallback, runtime lock health checks, and UI route smoke tests.
-
-## Notes
-
-- This MVP is optimized for trusted home-lab/self-hosted usage (no auth layer yet).
-- Roadmap items such as RAG memory, Slack/Discord alerts, and anomaly graphs are intentionally out of scope for this phase.
+- **Trusted-network only.** No authentication layer yet; anyone on your LAN can reach the UI and API.
+- **Telegram bot privacy:** for group chats, disable *privacy mode* in @BotFather or the bot won't receive your callbacks. 1:1 chats work out of the box.
+- **Fail-closed defaults:** a misconfigured LLM or Telegram returns a clear error envelope and the health endpoint reports `degraded` — it does not silently swallow failures.
