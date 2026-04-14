@@ -194,6 +194,36 @@ def prompt_studio_page():
     return render_template("prompt_studio.html", prompts=prompts, selected_prompt=prompt)
 
 
+@bp.route("/issues", endpoint="issues_page")
+def issues_page():
+    svc = current_app.extensions["services"]
+    status = request.args.get("status") or None
+    issues = svc.issue_repo.list_all(limit=200, status=status)
+    counts = svc.issue_repo.count_by_status()
+    selected_id = request.args.get("id", type=int)
+    selected = svc.issue_repo.get(selected_id) if selected_id else None
+    return render_template(
+        "issues.html",
+        issues=issues,
+        counts=counts,
+        selected=selected,
+        active_status=status,
+    )
+
+
+@bp.route("/issues/<int:issue_id>/status", methods=["POST"], endpoint="issues_set_status")
+def issues_set_status(issue_id: int):
+    svc = current_app.extensions["services"]
+    issue = svc.issue_repo.get(issue_id)
+    if issue is not None:
+        new_status = request.form.get("status", "").strip()
+        valid = {"open", "discussing", "rejected", "closed"}
+        if new_status in valid:
+            issue.status = new_status
+            db.session.commit()
+    return redirect(url_for("issues_page", id=issue_id))
+
+
 @bp.route("/sentinel/toggle", methods=["POST"], endpoint="sentinel_toggle_from_ui")
 def sentinel_toggle_from_ui():
     sentinel = current_app.extensions["services"].sentinel

@@ -22,7 +22,16 @@ DEFAULT_PROMPTS: dict[PromptKey, str] = {
     PromptKey.SENTINEL_ANALYSIS: (
         "You receive Docker container logs. Respond with ONLY one JSON object using keys: "
         "classification, summary, root_cause_hypothesis, fix_suggestion, confidence. "
-        "classification must be one of noise, warning, critical. confidence must be between 0.0 and 1.0."
+        "classification must be one of noise, warning, critical. confidence must be between 0.0 and 1.0.\n\n"
+        "Requirements for each field:\n"
+        "- summary: one sentence describing what went wrong, mentioning the container name.\n"
+        "- root_cause_hypothesis: the single most likely cause based on log evidence. "
+        "Be specific (name the subsystem, port, file, config key) rather than generic.\n"
+        "- fix_suggestion: a concrete, actionable remediation. Prefer exact shell commands, "
+        "docker commands, or configuration changes an operator can run immediately. "
+        "If multiple steps are required, number them. Avoid vague advice like "
+        "'check the logs' or 'investigate further' — the operator already has the logs.\n"
+        "- confidence: your calibrated certainty that the fix will resolve the issue."
     ),
     PromptKey.JSON_OUTPUT_GUARD: (
         "Output must be strict JSON only. Do not include markdown, code fences, or extra text. "

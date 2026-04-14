@@ -20,13 +20,13 @@ class DummyLLM:
 
 
 class DummyTelegram:
-    def send_message(self, token, chat_id, text):
-        return True, None
+    def send_message(self, token, chat_id, text, reply_markup=None, reply_to_message_id=None, parse_mode=None):
+        return True, None, 42
 
 
 class _FakeAlertStrategy:
-    def send(self, message, config):
-        return True, None
+    def send(self, message, config, reply_markup=None):
+        return True, None, 42
 
 
 

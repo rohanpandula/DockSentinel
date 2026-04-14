@@ -16,10 +16,11 @@ LOGGER = logging.getLogger(__name__)
 
 
 class RuntimeCoordinator:
-    def __init__(self, app, sentinel_service, briefing_service, health_check_interval_seconds: int = 30) -> None:
+    def __init__(self, app, sentinel_service, briefing_service, health_check_interval_seconds: int = 30, telegram_bot=None) -> None:
         self.app = app
         self.sentinel_service = sentinel_service
         self.briefing_service = briefing_service
+        self.telegram_bot = telegram_bot
 
         self._lock_fd = None
         self._scheduler: BackgroundScheduler | None = None
@@ -177,6 +178,9 @@ class RuntimeCoordinator:
             self.refresh_schedule()
             self._start_health_monitor()
 
+            if self.telegram_bot is not None:
+                self.telegram_bot.start()
+
             db_state = SentinelState.singleton()
             db_state.last_error = state.last_error
             db_state.runtime_status = state.runtime_status
@@ -201,6 +205,9 @@ class RuntimeCoordinator:
         if self._scheduler is not None:
             self._scheduler.shutdown(wait=False)
             self._scheduler = None
+
+        if self.telegram_bot is not None:
+            self.telegram_bot.stop()
 
         self._release_lock()
         self._started = False

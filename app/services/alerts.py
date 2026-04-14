@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from typing import Protocol, TYPE_CHECKING
+from typing import Any, Optional, Protocol, TYPE_CHECKING
 
 from app.config_objects import AlertConfig
 from app.services.telegram import TelegramNotifier
@@ -13,7 +13,12 @@ if TYPE_CHECKING:
 
 
 class AlertStrategy(Protocol):
-    def send(self, message: str, config: AlertConfig) -> tuple[bool, str | None]: ...
+    def send(
+        self,
+        message: str,
+        config: AlertConfig,
+        reply_markup: Optional[dict[str, Any]] = None,
+    ) -> tuple[bool, Optional[str], Optional[int]]: ...
 
 
 class TelegramAlertStrategy:
@@ -22,23 +27,22 @@ class TelegramAlertStrategy:
     def __init__(self, notifier: TelegramNotifier) -> None:
         self.notifier = notifier
 
-    def send(self, message: str, config: AlertConfig) -> tuple[bool, str | None]:
+    def send(
+        self,
+        message: str,
+        config: AlertConfig,
+        reply_markup: Optional[dict[str, Any]] = None,
+    ) -> tuple[bool, Optional[str], Optional[int]]:
         return self.notifier.send_message(
             token=config.telegram_token or "",
             chat_id=config.telegram_chat_id or "",
             text=message,
+            reply_markup=reply_markup,
         )
 
 
 class AlertService:
-    """Owns the alert gating + dispatch pipeline.
-
-    Responsibilities (in order):
-      1. Cooldown check (suppress duplicate chunk_hash within window).
-      2. Global rate-limit check.
-      3. Format the alert message.
-      4. Delegate dispatch to the injected strategy.
-    """
+    """Owns the alert gating + dispatch pipeline."""
 
     def __init__(
         self,
@@ -50,27 +54,58 @@ class AlertService:
 
     def maybe_send(
         self, event: "AnalysisEvent", config: AlertConfig
-    ) -> tuple[bool, str | None]:
-        """Gate -> format -> dispatch. Does NOT commit; caller owns transaction."""
+    ) -> tuple[bool, Optional[str], Optional[int]]:
+        """Returns (sent, error, telegram_message_id). Does NOT commit."""
         cooldown_since = utcnow_naive() - timedelta(minutes=config.cooldown_minutes)
         duplicate = self.event_repo.find_alert_duplicate(event.chunk_hash, cooldown_since)
         if duplicate:
-            return False, "duplicate alert suppressed by cooldown"
+            return False, "duplicate alert suppressed by cooldown", None
 
         window_since = utcnow_naive() - timedelta(seconds=config.rate_limit_window_seconds)
         recent_alerts = self.event_repo.count_recent_alerts(window_since)
 
         if recent_alerts >= config.rate_limit_count:
-            return False, "global rate limit exceeded"
+            return False, "global rate limit exceeded", None
 
         message = self._format_message(event)
-        return self.strategy.send(message, config)
+        reply_markup = self._build_keyboard(event.id)
+        return self.strategy.send(message, config, reply_markup=reply_markup)
 
     @staticmethod
     def _format_message(event: "AnalysisEvent") -> str:
-        return (
-            f"DockSentinel Critical Alert\n"
-            f"Container: {event.container_name}\n"
-            f"Summary: {event.summary or 'N/A'}\n"
-            f"Fix: {event.fix_suggestion or 'N/A'}"
-        )
+        severity = (event.classification or "critical").upper()
+        confidence = event.confidence
+        lines = [
+            f"🚨 {severity} · {event.container_name}",
+            "━━━━━━━━━━━━━━━━",
+        ]
+        if event.summary:
+            lines.append(event.summary)
+        if event.root_cause_hypothesis:
+            lines.append("")
+            lines.append("ROOT CAUSE")
+            lines.append(event.root_cause_hypothesis)
+        if event.fix_suggestion:
+            lines.append("")
+            lines.append("SUGGESTED FIX")
+            lines.append(event.fix_suggestion)
+        lines.append("")
+        if confidence is not None:
+            lines.append(f"Confidence: {confidence:.2f}")
+        if event.id is not None:
+            lines.append(f"Event ID: {event.id}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def _build_keyboard(event_id: Optional[int]) -> Optional[dict[str, Any]]:
+        if event_id is None:
+            return None
+        return {
+            "inline_keyboard": [
+                [
+                    {"text": "✕ Reject", "callback_data": f"reject:{event_id}"},
+                    {"text": "✓ Approve", "callback_data": f"approve:{event_id}"},
+                    {"text": "💬 Discuss", "callback_data": f"discuss:{event_id}"},
+                ]
+            ]
+        }

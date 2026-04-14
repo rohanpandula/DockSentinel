@@ -16,8 +16,10 @@ from app.services.cli_backends import CLIBackendRunner
 from app.services.coordinator import RuntimeCoordinator
 from app.services.llm_call import LLMCallService
 from app.services.llm_client import LLMClient
+from app.repositories.local_issues import LocalIssueRepository
 from app.services.chunk_coalescer import ChunkCoalescer
 from app.services.sentinel import SentinelService
+from app.services.telegram_bot import TelegramBotService
 from app.services.telegram import TelegramNotifier
 from app.services.verdict_parser import VerdictParser
 
@@ -42,6 +44,7 @@ def build_container(app: Flask) -> ServiceContainer:
     prompt_repo = PromptRepository()
     report_repo = ReportRepository()
     exclusion_repo = ExclusionRepository()
+    issue_repo = LocalIssueRepository()
 
     alert_strategy = TelegramAlertStrategy(telegram_notifier)
     alert_service = AlertService(strategy=alert_strategy, event_repo=event_repo)
@@ -62,10 +65,20 @@ def build_container(app: Flask) -> ServiceContainer:
         prompt_repo=prompt_repo,
         report_repo=report_repo,
     )
+    telegram_bot = TelegramBotService(
+        app=app,
+        notifier=telegram_notifier,
+        settings_repo=settings_repo,
+        event_repo=event_repo,
+        issue_repo=issue_repo,
+        prompt_repo=prompt_repo,
+        llm_call_service=llm_call_service,
+    )
     coordinator = RuntimeCoordinator(
         app=app,
         sentinel_service=sentinel_service,
         briefing_service=briefing_service,
+        telegram_bot=telegram_bot,
     )
 
     return ServiceContainer(
@@ -81,6 +94,8 @@ def build_container(app: Flask) -> ServiceContainer:
         event_repo=event_repo,
         settings_repo=settings_repo,
         prompt_repo=prompt_repo,
+        issue_repo=issue_repo,
+        telegram_bot=telegram_bot,
         report_repo=report_repo,
         exclusion_repo=exclusion_repo,
     )

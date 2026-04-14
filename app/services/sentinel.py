@@ -278,11 +278,13 @@ class SentinelService:
         event.confidence = verdict.confidence
 
         if verdict.classification == "critical":
-            sent, alert_error = self.alert_service.maybe_send(
+            sent, alert_error, tg_message_id = self.alert_service.maybe_send(
                 event, AlertConfig.from_settings(settings)
             )
             event.alert_sent = sent
             event.alert_error = alert_error
+            if tg_message_id is not None and hasattr(event, "telegram_message_id"):
+                event.telegram_message_id = tg_message_id
 
         self.event_repo.add(event)
         db.session.commit()

@@ -34,9 +34,9 @@ class _FakeAlertStrategy:
     def __init__(self):
         self.calls: list[str] = []
 
-    def send(self, message, config):
+    def send(self, message, config, reply_markup=None):
         self.calls.append(message)
-        return True, None
+        return True, None, 42
 
 
 def test_full_sentinel_pipeline_persists_event_and_exposes_via_api(client, container, db_session):

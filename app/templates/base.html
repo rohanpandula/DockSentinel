@@ -26,6 +26,7 @@
         <nav class="nav" aria-label="Primary">
           <a class="nav__link {% if path in ('/', '/dashboard') %}nav__link--active{% endif %}" href="{{ url_for('dashboard') }}">Overview</a>
           <a class="nav__link {% if path.startswith('/insights') %}nav__link--active{% endif %}" href="{{ url_for('insights_page') }}">Events</a>
+          <a class="nav__link {% if path.startswith('/issues') %}nav__link--active{% endif %}" href="{{ url_for('issues_page') }}">Issues</a>
           <a class="nav__link {% if path.startswith('/reports') %}nav__link--active{% endif %}" href="{{ url_for('reports_page') }}">Reports</a>
           <a class="nav__link {% if path.startswith('/exclusions') %}nav__link--active{% endif %}" href="{{ url_for('exclusions_page') }}">Exclusions</a>
           <a class="nav__link {% if path.startswith('/prompt') %}nav__link--active{% endif %}" href="{{ url_for('prompt_studio_page') }}">Prompts</a>

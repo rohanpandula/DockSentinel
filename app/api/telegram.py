@@ -13,7 +13,7 @@ def test_telegram():
     settings = Settings.singleton()
     notifier = current_app.extensions["services"].telegram_notifier
 
-    sent, error = notifier.send_message(
+    sent, error, _ = notifier.send_message(
         settings.telegram_token or "",
         settings.telegram_chat_id or "",
         "DockSentinel test message",
