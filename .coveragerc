@@ -1,0 +1,16 @@
+[run]
+source = app
+omit =
+    app/services/docker_watcher.py
+    app/services/coordinator.py
+    app/services/log_buffer.py
+    app/__init__.py
+    app/config.py
+    app/web/routes.py
+
+[report]
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.:
+    if TYPE_CHECKING:
+    raise NotImplementedError
