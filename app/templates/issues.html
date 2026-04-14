@@ -65,7 +65,7 @@
             {{ selected.container_name }} · created {{ selected.created_at }} · updated {{ selected.updated_at }}
           </p>
         </div>
-        <div class="row" style="gap:6px;">
+        <div class="row" style="gap:6px; flex-wrap:wrap; justify-content:flex-end;">
           {% if selected.status == 'open' %}
             <span class="badge badge--ok">open</span>
           {% elif selected.status == 'discussing' %}
@@ -81,7 +81,18 @@
         </div>
       </div>
 
-      <pre class="report-view" style="max-height:50vh;">{{ selected.body }}</pre>
+      {% if analyzed_by %}
+        <div class="mt-md" style="padding:10px 12px; background: var(--bg-app); border:1px solid var(--border-subtle); border-radius: var(--radius-md); display:flex; align-items:baseline; gap:10px; flex-wrap:wrap;">
+          <span class="eyebrow" style="margin:0;">Root cause analyzed by</span>
+          <span class="text-mono" style="color: var(--accent); font-size:12px; word-break:break-all;">{{ analyzed_by }}</span>
+        </div>
+      {% else %}
+        <div class="mt-md text-tertiary text-mono" style="font-size:11px;">
+          Root cause analyzed by: unknown (synthetic or pre-migration event)
+        </div>
+      {% endif %}
+
+      <pre class="report-view mt-md" style="max-height:50vh;">{{ selected.body }}</pre>
 
       {% if selected.discussion %}
         <h3 class="section-title mt-lg">Discussion</h3>

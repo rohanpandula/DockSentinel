@@ -32,6 +32,7 @@ class LocalIssue(db.Model):
     confidence = db.Column(db.Float, nullable=True)
     telegram_chat_id = db.Column(db.String(255), nullable=True)
     telegram_message_id = db.Column(db.Integer, nullable=True, index=True)
+    llm_model = db.Column(db.String(255), nullable=True)
     discussion = db.Column(db.Text, nullable=False, default="")
     created_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
     updated_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive, onupdate=utcnow_naive)
@@ -54,6 +55,7 @@ class LocalIssue(db.Model):
             "discussion": self.discussion,
             "telegram_chat_id": self.telegram_chat_id,
             "telegram_message_id": self.telegram_message_id,
+            "llm_model": self.llm_model,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

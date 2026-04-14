@@ -213,6 +213,7 @@ class TelegramBotService:
             f"**Container:** {event.container_name}",
             f"**Classification:** {event.classification or 'critical'}",
             f"**Status:** {event.status or 'analyzed'}",
+            f"**Analyzed by:** {event.model or 'unknown'}",
             "",
             "## Root cause hypothesis",
             event.root_cause_hypothesis or "—",
@@ -232,6 +233,7 @@ class TelegramBotService:
             confidence=event.confidence,
             telegram_chat_id=chat_id,
             telegram_message_id=message_id,
+            llm_model=event.model,
         )
         self.issue_repo.add(issue)
         return issue

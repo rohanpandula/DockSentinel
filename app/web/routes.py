@@ -202,11 +202,21 @@ def issues_page():
     counts = svc.issue_repo.count_by_status()
     selected_id = request.args.get("id", type=int)
     selected = svc.issue_repo.get(selected_id) if selected_id else None
+
+    analyzed_by = None
+    if selected is not None:
+        analyzed_by = selected.llm_model
+        if not analyzed_by and selected.event_id:
+            event = svc.event_repo.get(selected.event_id)
+            if event is not None:
+                analyzed_by = event.model
+
     return render_template(
         "issues.html",
         issues=issues,
         counts=counts,
         selected=selected,
+        analyzed_by=analyzed_by,
         active_status=status,
     )
 
