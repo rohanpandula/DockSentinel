@@ -9,18 +9,13 @@ services:
       - DATABASE_URL=sqlite:////data/docksentinel.db
       - RUNTIME_LOCK_PATH=/data/runtime.lock
       - START_COORDINATOR=true
-      - DOCKER_HOST=tcp://host.docker.internal:23751
+      - DOCKER_HOST=unix:///var/run/docker.sock
       - CLI_BACKENDS_DIR=/app/llm-backends
-      - CODEX_HOME=/home/appuser/.codex
-      - GEMINI_HOME=/home/appuser/.gemini
       - SECRET_KEY=${SECRET_KEY:?Set SECRET_KEY in your shell or .env before running docker compose}
       - PYTHONUNBUFFERED=1
     volumes:
       - docksentinel_data:/data
-      - ${HOME}/.codex:/home/appuser/.codex:rw
-      - ${HOME}/.gemini:/home/appuser/.gemini:rw
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:5000/api/health"]
       interval: 30s

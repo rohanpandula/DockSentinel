@@ -1,0 +1,63 @@
+# Example docker-compose for Unraid (or any macvlan setup) where the
+# container gets its own LAN IP rather than a host port mapping.
+#
+# Copy to docker-compose.unraid.yml and adjust:
+#   - ipv4_address        -> a free IP on your LAN inside the br0 subnet
+#   - group_add           -> the GID of the `docker` group on the host
+#                             (look up with `getent group docker` on the host;
+#                             281 is the Unraid default)
+#   - SECRET_KEY          -> set in a sibling .env file
+#   - MDNS_HOSTNAME       -> name you want to reach the app as (foo.local)
+#
+# Requirements:
+#   - A `br0` macvlan network defined in Docker (created by Unraid's
+#     Docker settings when you enable macvlan networking)
+#   - SECRET_KEY exported, e.g. in a sibling .env:
+#         SECRET_KEY=$(openssl rand -hex 32)
+#
+# Deploy: `docker compose -f docker-compose.unraid.yml up -d --build`
+
+services:
+  docksentinel:
+    build: .
+    container_name: docksentinel
+    hostname: docksentinel
+    group_add:
+      - "281" # GID of `docker` group on the Unraid host (verify on your box)
+    sysctls:
+      # Allow the non-root appuser (uid 1000) to bind port 80 without
+      # CAP_NET_BIND_SERVICE. Keeps the process non-root.
+      - net.ipv4.ip_unprivileged_port_start=80
+    environment:
+      - FLASK_ENV=production
+      - DATABASE_URL=sqlite:////data/docksentinel.db
+      - RUNTIME_LOCK_PATH=/data/runtime.lock
+      - START_COORDINATOR=true
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - CLI_BACKENDS_DIR=/app/llm-backends
+      - SECRET_KEY=${SECRET_KEY}
+      - PYTHONUNBUFFERED=1
+      - APP_PORT=80
+      - MDNS_ENABLED=true
+      - MDNS_HOSTNAME=docksentinel
+      - MDNS_PORT=80
+    volumes:
+      - docksentinel_data:/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      br0:
+        ipv4_address: 10.0.0.X # <-- replace with a free IP on your LAN
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:80/api/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  docksentinel_data:
+
+networks:
+  br0:
+    external: true

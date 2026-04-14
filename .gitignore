@@ -7,6 +7,14 @@ __pycache__/
 .pytest_cache/
 instance/
 .env
+.python-version
+
+# Editor / agent caches
+.claude/
+
+# Test / coverage artifacts
+.coverage
+htmlcov/
 
 # Runtime artifacts – never commit database or lock files
 data/*.db
