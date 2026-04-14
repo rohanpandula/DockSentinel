@@ -81,7 +81,7 @@ Plans:
 - [x] 04-01-PLAN.md — Extract AlertService/AlertStrategy/TelegramAlertStrategy, rewire SentinelService + ServiceContainer + factory, swap test seam
 - [x] 04-02-PLAN.md — Extract composition root (app/composition.py::build_container) and default seeding (app/bootstrap.py::seed_defaults)
 - [x] 04-03-PLAN.md — Extract web routes to app/web/routes.py Blueprint with explicit endpoint= kwargs; rename/expand _register_blueprints
-- [ ] 04-04-PLAN.md — Final trim of app/__init__.py to ≤90 LOC + phase acceptance matrix + human UI smoke test
+- [x] 04-04-PLAN.md — Final trim of app/__init__.py to ≤90 LOC + phase acceptance matrix + human UI smoke test
 
 ### Phase 5: API Quality and Hardening
 **Goal**: All list endpoints have Pydantic-validated responses and pagination, test coverage is measured and gated at 80%+, and Docker runs securely with a health check
