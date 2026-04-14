@@ -83,7 +83,9 @@ class AnalysisEventRepository:
         classification: str | None = None,
         start: datetime | None = None,
         end: datetime | None = None,
-        limit: int = 200,
+        limit: int = 100,
+        offset: int = 0,
+        sort: str = "-created_at",
     ) -> list[AnalysisEvent]:
         query = AnalysisEvent.query
         if container:
@@ -94,7 +96,12 @@ class AnalysisEventRepository:
             query = query.filter(AnalysisEvent.created_at >= start)
         if end:
             query = query.filter(AnalysisEvent.created_at <= end)
-        return query.order_by(AnalysisEvent.created_at.desc()).limit(limit).all()
+        order_col = (
+            AnalysisEvent.created_at.desc()
+            if sort.startswith("-")
+            else AnalysisEvent.created_at.asc()
+        )
+        return query.order_by(order_col).limit(limit).offset(offset).all()
 
     def get_distinct_container_names(self) -> list[str]:
         return [

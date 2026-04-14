@@ -1,10 +1,10 @@
-from __future__ import annotations
-
 import dataclasses
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, current_app, jsonify
+from flask_pydantic import validate
 
 from app.config_objects import LLMConfig
+from app.schemas.settings import SettingsSchema, TestLLMResponse, UpdateSettingsBody
 
 bp = Blueprint("settings_api", __name__, url_prefix="/api")
 
@@ -39,34 +39,33 @@ _ALLOWED_FIELDS = {
 
 
 @bp.get("/settings")
-def get_settings() -> tuple[dict, int]:
-    container = current_app.extensions["services"]
-    settings = container.settings_repo.get()
-    return jsonify(settings.as_dict()), 200
+def get_settings():
+    services = current_app.extensions["services"]
+    settings = services.settings_repo.get()
+    return SettingsSchema.model_validate(settings).model_dump(), 200
 
 
 @bp.put("/settings")
-def update_settings() -> tuple[dict, int]:
-    payload = request.get_json(silent=True) or {}
-    container = current_app.extensions["services"]
-    settings = container.settings_repo.get()
+@validate(body=UpdateSettingsBody)
+def update_settings(body: UpdateSettingsBody):
+    services = current_app.extensions["services"]
+    settings = services.settings_repo.get()
 
-    for key, value in payload.items():
+    for key, value in body.model_dump(exclude_unset=True).items():
         if key in _ALLOWED_FIELDS:
             setattr(settings, key, value)
 
-    container.settings_repo.save()
+    services.settings_repo.save()
+    services.coordinator.refresh_schedule()
 
-    container.coordinator.refresh_schedule()
-
-    return jsonify(settings.as_dict()), 200
+    return SettingsSchema.model_validate(settings).model_dump(), 200
 
 
 @bp.post("/settings/test-llm")
-def test_llm_connection() -> tuple[dict, int]:
-    container = current_app.extensions["services"]
-    settings = container.settings_repo.get()
-    llm_call = container.llm_call
+def test_llm_connection():
+    services = current_app.extensions["services"]
+    settings = services.settings_repo.get()
+    llm_call = services.llm_call
 
     try:
         config = dataclasses.replace(LLMConfig.from_settings(settings), max_retries=0, cli_max_retries=0)
@@ -77,6 +76,6 @@ def test_llm_connection() -> tuple[dict, int]:
             temperature=0.0,
         )
     except Exception as exc:  # pragma: no cover - network dependent
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return TestLLMResponse(ok=False, error=str(exc)).model_dump(), 400
 
-    return jsonify({"ok": True}), 200
+    return TestLLMResponse(ok=True).model_dump(), 200

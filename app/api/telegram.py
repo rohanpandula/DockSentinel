@@ -1,14 +1,15 @@
 from __future__ import annotations
 
-from flask import Blueprint, current_app, jsonify
+from flask import Blueprint, current_app
 
 from app.models import Settings
+from app.schemas.telegram import TelegramTestResponse
 
 bp = Blueprint("telegram_api", __name__, url_prefix="/api")
 
 
 @bp.post("/telegram/test")
-def test_telegram() -> tuple[dict, int]:
+def test_telegram():
     settings = Settings.singleton()
     notifier = current_app.extensions["services"].telegram_notifier
 
@@ -18,5 +19,5 @@ def test_telegram() -> tuple[dict, int]:
         "DockSentinel test message",
     )
     if not sent:
-        return jsonify({"ok": False, "error": error}), 400
-    return jsonify({"ok": True}), 200
+        return TelegramTestResponse(ok=False, error=error).model_dump(), 400
+    return TelegramTestResponse(ok=True).model_dump(), 200

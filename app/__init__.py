@@ -58,6 +58,7 @@ def create_app() -> Flask:
     app.config["TESTING"] = config.testing
     app.config["RUNTIME_LOCK_PATH"] = config.runtime_lock_path
     app.config["START_COORDINATOR"] = config.start_coordinator
+    app.config["FLASK_PYDANTIC_VALIDATION_ERROR_RAISE"] = True
 
     _ensure_sqlite_parent_dir(app, app.config["SQLALCHEMY_DATABASE_URI"])
     db.init_app(app)
@@ -74,6 +75,8 @@ def create_app() -> Flask:
         app.extensions["services"] = build_container(app)
 
     _register_blueprints(app)
+    from app.errors import register_error_handlers
+    register_error_handlers(app)
 
     coordinator = app.extensions["services"].coordinator
     if app.config["START_COORDINATOR"] and not app.config["TESTING"]:
