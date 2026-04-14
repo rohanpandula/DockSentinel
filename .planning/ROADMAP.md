@@ -75,7 +75,13 @@ Plans:
   2. All web routes are registered via a Blueprint in `app/web/routes.py` — every existing URL pattern and endpoint name works identically
   3. `app/__init__.py` is under 100 LOC and contains only app factory wiring
   4. All 31 existing tests pass with no modifications to test logic
-**Plans**: TBD
+**Plans**: 4 plans
+
+Plans:
+- [ ] 04-01-PLAN.md — Extract AlertService/AlertStrategy/TelegramAlertStrategy, rewire SentinelService + ServiceContainer + factory, swap test seam
+- [ ] 04-02-PLAN.md — Extract composition root (app/composition.py::build_container) and default seeding (app/bootstrap.py::seed_defaults)
+- [ ] 04-03-PLAN.md — Extract web routes to app/web/routes.py Blueprint with explicit endpoint= kwargs; rename/expand _register_blueprints
+- [ ] 04-04-PLAN.md — Final trim of app/__init__.py to ≤90 LOC + phase acceptance matrix + human UI smoke test
 
 ### Phase 5: API Quality and Hardening
 **Goal**: All list endpoints have Pydantic-validated responses and pagination, test coverage is measured and gated at 80%+, and Docker runs securely with a health check
@@ -99,5 +105,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 1. Foundation | 3/3 | Complete   | 2026-04-04 |
 | 2. Repository Layer | 2/3 | Executing  |  |
 | 3. Alembic Migration Infrastructure | 2/2 | Complete   | 2026-04-05 |
-| 4. Service Decomposition and Blueprint | 0/TBD | Not started | - |
+| 4. Service Decomposition and Blueprint | 0/4 | Planned | - |
 | 5. API Quality and Hardening | 0/TBD | Not started | - |
