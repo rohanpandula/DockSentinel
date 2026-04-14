@@ -11,8 +11,8 @@ Requirements for this refactor milestone. Each maps to roadmap phases.
 
 - [x] **SRVC-01**: LLM invocation logic consolidated into a single LLMCallService class, eliminating duplication across sentinel.py, briefing.py, and api/settings.py
 - [x] **SRVC-02**: SentinelService and BriefingService use the shared LLMCallService instead of private _call_llm methods
-- [ ] **SRVC-03**: AlertService extracted from SentinelService with AlertStrategy protocol for transport abstraction
-- [ ] **SRVC-04**: TelegramAlertStrategy implements the AlertStrategy protocol, replacing hardcoded Telegram calls in SentinelService
+- [x] **SRVC-03**: AlertService extracted from SentinelService with AlertStrategy protocol for transport abstraction
+- [x] **SRVC-04**: TelegramAlertStrategy implements the AlertStrategy protocol, replacing hardcoded Telegram calls in SentinelService
 
 ### Dependency Injection
 
@@ -41,9 +41,9 @@ Requirements for this refactor milestone. Each maps to roadmap phases.
 
 ### App Structure
 
-- [ ] **APP-01**: Web routes extracted from app/__init__.py into a dedicated Blueprint
-- [ ] **APP-02**: app/__init__.py reduced to pure app factory wiring (~80 LOC)
-- [ ] **APP-03**: All existing URL patterns and endpoint names preserved after Blueprint extraction
+- [x] **APP-01**: Web routes extracted from app/__init__.py into a dedicated Blueprint
+- [x] **APP-02**: app/__init__.py reduced to pure app factory wiring (~80 LOC)
+- [x] **APP-03**: All existing URL patterns and endpoint names preserved after Blueprint extraction
 
 ### API Quality
 
@@ -104,8 +104,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 |-------------|-------|--------|
 | SRVC-01 | Phase 1 | Complete |
 | SRVC-02 | Phase 1 | Complete |
-| SRVC-03 | Phase 4 | Pending |
-| SRVC-04 | Phase 4 | Pending |
+| SRVC-03 | Phase 4 | Complete |
+| SRVC-04 | Phase 4 | Complete |
 | DI-01 | Phase 1 | Complete |
 | DI-02 | Phase 1 | Complete |
 | DI-03 | Phase 1 | Complete |
@@ -119,9 +119,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | MIG-02 | Phase 3 | Complete |
 | MIG-03 | Phase 3 | Complete |
 | MIG-04 | Phase 3 | Complete |
-| APP-01 | Phase 4 | Pending |
-| APP-02 | Phase 4 | Pending |
-| APP-03 | Phase 4 | Pending |
+| APP-01 | Phase 4 | Complete |
+| APP-02 | Phase 4 | Complete |
+| APP-03 | Phase 4 | Complete |
 | API-01 | Phase 5 | Pending |
 | API-02 | Phase 5 | Pending |
 | API-03 | Phase 5 | Pending |
@@ -142,4 +142,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-04-04*
-*Last updated: 2026-04-04 after initial definition*
+*Last updated: 2026-04-14 — Phase 4 (SRVC-03, SRVC-04, APP-01, APP-02, APP-03) marked Complete*
