@@ -54,10 +54,10 @@ Requirements for this refactor milestone. Each maps to roadmap phases.
 
 ### Test Infrastructure
 
-- [ ] **TEST-01**: Shared pytest fixtures extracted to tests/conftest.py (app factory, client, DB session)
-- [ ] **TEST-02**: Integration tests added for the full sentinel pipeline (prefilter → dedup → rate limit → LLM → alert)
-- [ ] **TEST-03**: pytest-cov configured with minimum coverage threshold (80%+)
-- [ ] **TEST-04**: All 31 existing tests continue to pass throughout the refactor
+- [x] **TEST-01**: Shared pytest fixtures extracted to tests/conftest.py (app factory, client, DB session)
+- [x] **TEST-02**: Integration tests added for the full sentinel pipeline (prefilter → dedup → rate limit → LLM → alert)
+- [x] **TEST-03**: pytest-cov configured with minimum coverage threshold (80%+)
+- [x] **TEST-04**: All 31 existing tests continue to pass throughout the refactor
 
 ### Docker
 
@@ -126,10 +126,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | API-02 | Phase 5 | Complete |
 | API-03 | Phase 5 | Complete |
 | API-04 | Phase 5 | Complete |
-| TEST-01 | Phase 5 | Pending |
-| TEST-02 | Phase 5 | Pending |
-| TEST-03 | Phase 5 | Pending |
-| TEST-04 | All | Pending |
+| TEST-01 | Phase 5 | Complete |
+| TEST-02 | Phase 5 | Complete |
+| TEST-03 | Phase 5 | Complete |
+| TEST-04 | All | Complete |
 | DOCK-01 | Phase 5 | Pending |
 | DOCK-02 | Phase 5 | Pending |
 | DOCK-03 | Phase 5 | Pending |

@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.2
 milestone_name: milestone
 status: executing
-stopped_at: Completed 05-01-PLAN.md
-last_updated: "2026-04-14T20:39:57.331Z"
+stopped_at: Completed 05-02-PLAN.md
+last_updated: "2026-04-14T20:46:14.163Z"
 last_activity: 2026-04-14
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 15
-  completed_plans: 14
-  percent: 93
+  completed_plans: 15
+  percent: 100
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-04-04)
 ## Current Position
 
 Phase: 05 (api-quality-and-hardening) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-04-14
 
@@ -59,6 +59,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 03 P01 | 3 | 2 tasks | 7 files |
 | Phase 03 P02 | 2 | 2 tasks | 3 files |
 | Phase 05 P01 | 304 | 2 tasks | 23 files |
+| Phase 05 P02 | 420 | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -84,6 +85,9 @@ Recent decisions affecting current work:
 - [Phase 03-02]: docker-entrypoint.sh uses Python for v0.2 detection then shell alembic stamp; TESTING gate uses app.config.get('TESTING')
 - [Phase 05]: Drop from __future__ import annotations from @validate-decorated route files — Flask-Pydantic 0.14.0 reads func.__annotations__ directly causing issubclass() TypeError with PEP 563 strings
 - [Phase 05]: SentinelStateSchema mirrors actual SentinelState.as_dict() (7 fields: enabled, runtime_status, started_at, last_error, llm_failure_count, llm_last_failure_at, updated_at) — plan interface section had incorrect field names
+- [Phase 05-02]: _LLMStub must return LLMResult dataclass — sentinel.py accesses llm_result.content; raw dicts raise AttributeError
+- [Phase 05-02]: Pipeline integration test requests db_session fixture to ensure app context is active for SQLAlchemy writes inside process_chunk
+- [Phase 05-02]: Sentinel status route is /api/sentinel/status not /api/sentinel — plan template had wrong path
 
 ### Pending Todos
 
@@ -96,6 +100,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-14T20:39:57.326Z
-Stopped at: Completed 05-01-PLAN.md
+Last session: 2026-04-14T20:46:14.159Z
+Stopped at: Completed 05-02-PLAN.md
 Resume file: None

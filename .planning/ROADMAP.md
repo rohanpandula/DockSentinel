@@ -97,7 +97,7 @@ Plans:
 
 Plans:
 - [x] 05-01-PLAN.md — app/schemas/ package + Flask-Pydantic validation + pagination on /api/insights and /api/reports + error envelope remap
-- [ ] 05-02-PLAN.md — pytest-cov gate at 80%, shared tests/conftest.py fixtures, pipeline integration test + pagination/schema parity tests
+- [x] 05-02-PLAN.md — pytest-cov gate at 80%, shared tests/conftest.py fixtures, pipeline integration test + pagination/schema parity tests
 - [ ] 05-03-PLAN.md — Docker non-root user, /api/health HEALTHCHECK, named volume, Codex/Gemini CLI path relocation
 
 ## Progress
@@ -111,4 +111,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 2. Repository Layer | 2/3 | Executing  |  |
 | 3. Alembic Migration Infrastructure | 2/2 | Complete   | 2026-04-05 |
 | 4. Service Decomposition and Blueprint | 0/4 | Planned | - |
-| 5. API Quality and Hardening | 1/3 | In Progress|  |
+| 5. API Quality and Hardening | 2/3 | In Progress|  |
