@@ -277,16 +277,18 @@ class SentinelService:
         event.fix_suggestion = verdict.fix_suggestion
         event.confidence = verdict.confidence
 
+        # Flush early so event.id is assigned before the alert keyboard
+        # references it in callback_data (approve:<id>, reject:<id>, etc.).
+        self.event_repo.add(event)
+        db.session.flush()
+
         if verdict.classification == "critical":
             sent, alert_error, tg_message_id = self.alert_service.maybe_send(
                 event, AlertConfig.from_settings(settings)
             )
             event.alert_sent = sent
             event.alert_error = alert_error
-            if tg_message_id is not None and hasattr(event, "telegram_message_id"):
-                event.telegram_message_id = tg_message_id
 
-        self.event_repo.add(event)
         db.session.commit()
         self.mark_runtime_running()
         return event
