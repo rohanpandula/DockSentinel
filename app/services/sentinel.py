@@ -14,6 +14,12 @@ from app.services.log_buffer import LogBuffer
 from app.services.prefilter import Prefilter
 from app.time_utils import utcnow_naive
 
+CLASSIFICATION_RANK = {"noise": 0, "warning": 1, "critical": 2}
+
+
+def classification_rank(value: str | None) -> int:
+    return CLASSIFICATION_RANK.get((value or "").strip().lower(), -1)
+
 if TYPE_CHECKING:
     from app.repositories.analysis_events import AnalysisEventRepository
     from app.repositories.exclusions import ExclusionRepository
@@ -293,10 +299,9 @@ class SentinelService:
         self.event_repo.add(event)
         db.session.flush()
 
-        if verdict.classification == "critical":
-            sent, alert_error, tg_message_id = self.alert_service.maybe_send(
-                event, AlertConfig.from_settings(settings)
-            )
+        alert_config = AlertConfig.from_settings(settings)
+        if classification_rank(verdict.classification) >= classification_rank(alert_config.min_classification):
+            sent, alert_error, tg_message_id = self.alert_service.maybe_send(event, alert_config)
             event.alert_sent = sent
             event.alert_error = alert_error
 
@@ -307,8 +312,18 @@ class SentinelService:
     def analyze_container_now(self, container_name_or_id: str) -> AnalysisEvent:
         settings = self._settings()
         client = docker.from_env()
-        container = client.containers.get(container_name_or_id)
-        raw = container.logs(tail=200, stdout=True, stderr=True)
+        try:
+            container = client.containers.get(container_name_or_id)
+            if self.is_excluded_container(container.name):
+                raise ValueError(
+                    f"container '{container.name}' matches an exclusion rule; remove the rule to analyze it"
+                )
+            raw = container.logs(tail=200, stdout=True, stderr=True)
+        finally:
+            try:
+                client.close()
+            except Exception:  # pragma: no cover - best effort
+                pass
         chunk_text = raw.decode("utf-8", errors="replace")
 
         if not chunk_text.strip():

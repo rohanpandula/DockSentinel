@@ -10,6 +10,9 @@ from app.time_utils import utcnow_naive
 if TYPE_CHECKING:
     from app.models import AnalysisEvent
     from app.repositories.analysis_events import AnalysisEventRepository
+    from app.repositories.local_issues import LocalIssueRepository
+
+REJECTED_ISSUE_SUPPRESS_HOURS = 24
 
 
 class AlertStrategy(Protocol):
@@ -48,18 +51,29 @@ class AlertService:
         self,
         strategy: AlertStrategy,
         event_repo: "AnalysisEventRepository",
+        issue_repo: "LocalIssueRepository | None" = None,
     ) -> None:
         self.strategy = strategy
         self.event_repo = event_repo
+        self.issue_repo = issue_repo
 
     def maybe_send(
         self, event: "AnalysisEvent", config: AlertConfig
     ) -> tuple[bool, Optional[str], Optional[int]]:
         """Returns (sent, error, telegram_message_id). Does NOT commit."""
-        cooldown_since = utcnow_naive() - timedelta(minutes=config.cooldown_minutes)
-        duplicate = self.event_repo.find_alert_duplicate(event.chunk_hash, cooldown_since)
-        if duplicate:
-            return False, "duplicate alert suppressed by cooldown", None
+        now = utcnow_naive()
+        if config.cooldown_minutes > 0:
+            cooldown_since = now - timedelta(minutes=config.cooldown_minutes)
+            duplicate = self.event_repo.find_recent_alert_for_container(
+                event.container_id, event.classification, cooldown_since
+            )
+            if duplicate is not None and duplicate.id != event.id:
+                return False, "duplicate alert suppressed by cooldown", None
+
+        if self.issue_repo is not None and event.container_name:
+            rejected_since = now - timedelta(hours=REJECTED_ISSUE_SUPPRESS_HOURS)
+            if self.issue_repo.has_recent_rejected(event.container_name, rejected_since):
+                return False, "suppressed: recently rejected", None
 
         window_since = utcnow_naive() - timedelta(seconds=config.rate_limit_window_seconds)
         recent_alerts = self.event_repo.count_recent_alerts(window_since)

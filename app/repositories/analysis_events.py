@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import and_
+from sqlalchemy import and_, delete
 
 from app.extensions import db
 from app.models.events import AnalysisEvent
@@ -38,6 +38,23 @@ class AnalysisEventRepository:
             AnalysisEvent.query.filter(
                 and_(
                     AnalysisEvent.chunk_hash == chunk_hash,
+                    AnalysisEvent.alert_sent.is_(True),
+                    AnalysisEvent.created_at >= since,
+                )
+            )
+            .order_by(AnalysisEvent.created_at.desc())
+            .first()
+        )
+
+    def find_recent_alert_for_container(
+        self, container_id: str, classification: str | None, since: datetime
+    ) -> AnalysisEvent | None:
+        """Most recent *sent* alert for this container with the same classification."""
+        return (
+            AnalysisEvent.query.filter(
+                and_(
+                    AnalysisEvent.container_id == container_id,
+                    AnalysisEvent.classification == classification,
                     AnalysisEvent.alert_sent.is_(True),
                     AnalysisEvent.created_at >= since,
                 )
@@ -102,6 +119,21 @@ class AnalysisEventRepository:
             else AnalysisEvent.created_at.asc()
         )
         return query.order_by(order_col).limit(limit).offset(offset).all()
+
+    PRUNABLE_STATUSES = frozenset({"skipped", "dedup_skipped", "rate_limited", "queued", "excluded"})
+
+    def prune(self, older_than: datetime, statuses=None) -> int:
+        """Delete low-value rows older than ``older_than``. Never touches analyzed/parse_error/llm_error."""
+        wanted = set(statuses) if statuses is not None else set(self.PRUNABLE_STATUSES)
+        wanted &= self.PRUNABLE_STATUSES
+        if not wanted:
+            return 0
+        stmt = delete(AnalysisEvent).where(
+            and_(AnalysisEvent.status.in_(sorted(wanted)), AnalysisEvent.created_at < older_than)
+        )
+        result = db.session.execute(stmt)
+        db.session.commit()
+        return int(result.rowcount or 0)
 
     def get_distinct_container_names(self) -> list[str]:
         return [

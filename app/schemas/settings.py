@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 SECRET_FIELDS = ("llm_api_key", "telegram_token")
@@ -19,6 +21,7 @@ ALLOWED_SETTINGS_FIELDS = frozenset({
     "llm_timeout_seconds", "llm_max_retries", "dedup_window_seconds",
     "container_rate_limit_count", "container_rate_limit_window_seconds",
     "keyword_flush_delay_lines", "chunk_coalesce_window_seconds",
+    "alert_min_classification", "event_retention_days",
 })
 
 
@@ -53,6 +56,8 @@ class SettingsSchema(BaseModel):
     alert_cooldown_minutes: int | None = None
     alert_rate_limit_count: int | None = None
     alert_rate_limit_window_seconds: int | None = None
+    alert_min_classification: str | None = None
+    event_retention_days: int | None = None
     llm_timeout_seconds: int | None = None
     llm_max_retries: int | None = None
     dedup_window_seconds: int | None = None
@@ -90,6 +95,8 @@ class UpdateSettingsBody(BaseModel):
     alert_cooldown_minutes: int | None = Field(default=None, ge=0)
     alert_rate_limit_count: int | None = Field(default=None, ge=0)
     alert_rate_limit_window_seconds: int | None = Field(default=None, ge=1)
+    alert_min_classification: Literal["noise", "warning", "critical"] | None = None
+    event_retention_days: int | None = Field(default=None, ge=1)
     llm_timeout_seconds: int | None = Field(default=None, ge=1)
     llm_max_retries: int | None = Field(default=None, ge=0)
     dedup_window_seconds: int | None = Field(default=None, ge=0)

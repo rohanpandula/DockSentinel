@@ -4,6 +4,7 @@ import fcntl
 import logging
 import os
 import threading
+from datetime import timedelta
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -13,14 +14,26 @@ from app.services.docker_watcher import DockerWatcher
 from app.time_utils import utcnow_naive
 
 LOGGER = logging.getLogger(__name__)
+BRIEFING_TELEGRAM_MAX_CHARS = 3900
 
 
 class RuntimeCoordinator:
-    def __init__(self, app, sentinel_service, briefing_service, health_check_interval_seconds: int = 30, telegram_bot=None) -> None:
+    def __init__(
+        self,
+        app,
+        sentinel_service,
+        briefing_service,
+        health_check_interval_seconds: int = 30,
+        telegram_bot=None,
+        telegram_notifier=None,
+        event_repo=None,
+    ) -> None:
         self.app = app
         self.sentinel_service = sentinel_service
         self.briefing_service = briefing_service
         self.telegram_bot = telegram_bot
+        self.telegram_notifier = telegram_notifier
+        self.event_repo = event_repo
 
         self._lock_fd = None
         self._scheduler: BackgroundScheduler | None = None
@@ -59,7 +72,46 @@ class RuntimeCoordinator:
 
     def _run_nightly_job(self) -> None:
         with self.app.app_context():
-            self.briefing_service.generate_report()
+            report = self.briefing_service.generate_report()
+            self._push_briefing_to_telegram(report)
+
+    def _push_briefing_to_telegram(self, report) -> None:
+        """Send the nightly briefing text to the configured chat (best effort)."""
+        if report is None or self.telegram_notifier is None:
+            return
+        if getattr(report, "status", None) != "generated":
+            return
+        settings = Settings.singleton()
+        token = (settings.telegram_token or "").strip()
+        chat_id = (settings.telegram_chat_id or "").strip()
+        if not token or not chat_id:
+            return
+        text = (report.markdown_content or "").strip()
+        if not text:
+            return
+        header = "📋 DockSentinel nightly briefing\n\n"
+        body = header + text
+        if len(body) > BRIEFING_TELEGRAM_MAX_CHARS:
+            body = body[: BRIEFING_TELEGRAM_MAX_CHARS - 1] + "…"
+        try:
+            ok, error, _ = self.telegram_notifier.send_message(token=token, chat_id=chat_id, text=body)
+            if not ok:
+                LOGGER.warning("nightly briefing telegram push failed: %s", error)
+        except Exception:
+            LOGGER.warning("nightly briefing telegram push raised", exc_info=True)
+
+    def _run_prune_job(self) -> None:
+        if self.event_repo is None:
+            return
+        with self.app.app_context():
+            settings = Settings.singleton()
+            days = max(1, int(getattr(settings, "event_retention_days", 14) or 14))
+            cutoff = utcnow_naive() - timedelta(days=days)
+            try:
+                deleted = self.event_repo.prune(cutoff)
+                LOGGER.info("pruned %d analysis events older than %d days", deleted, days)
+            except Exception:
+                LOGGER.warning("analysis event prune failed", exc_info=True)
 
     def refresh_schedule(self) -> None:
         if self._scheduler is None:
@@ -71,6 +123,14 @@ class RuntimeCoordinator:
             self._run_nightly_job,
             trigger=trigger,
             id="nightly_briefing",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
+        self._scheduler.add_job(
+            self._run_prune_job,
+            trigger=CronTrigger(hour=3, minute=15),
+            id="prune-events",
             replace_existing=True,
             max_instances=1,
             coalesce=True,

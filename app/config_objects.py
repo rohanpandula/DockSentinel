@@ -43,10 +43,12 @@ class AlertConfig:
     rate_limit_window_seconds: int
     telegram_token: str | None
     telegram_chat_id: str | None
+    min_classification: str = "critical"
 
     @classmethod
     def from_settings(cls, s: "Settings") -> "AlertConfig":
         return cls(
+            min_classification=(getattr(s, "alert_min_classification", None) or "critical"),
             cooldown_minutes=s.alert_cooldown_minutes,
             rate_limit_count=s.alert_rate_limit_count,
             rate_limit_window_seconds=s.alert_rate_limit_window_seconds,

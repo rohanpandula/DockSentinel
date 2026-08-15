@@ -42,6 +42,7 @@ def dashboard():
         latest_report=latest_report,
         active_containers=container.coordinator.active_container_ids(),
         known_containers=_list_running_containers(),
+        analyze_error=request.args.get("analyze_error"),
     )
 
 
@@ -242,9 +243,10 @@ def sentinel_toggle_from_ui():
 def sentinel_analyze_from_ui():
     sentinel = current_app.extensions["services"].sentinel
     container = request.form.get("container", "").strip()
-    if container:
-        try:
-            sentinel.analyze_container_now(container)
-        except Exception:
-            pass
+    if not container:
+        return redirect(url_for("dashboard", analyze_error="no container selected"))
+    try:
+        sentinel.analyze_container_now(container)
+    except Exception as exc:
+        return redirect(url_for("dashboard", analyze_error=str(exc)[:300]))
     return redirect(url_for("dashboard"))

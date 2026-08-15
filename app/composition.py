@@ -47,7 +47,7 @@ def build_container(app: Flask) -> ServiceContainer:
     issue_repo = LocalIssueRepository()
 
     alert_strategy = TelegramAlertStrategy(telegram_notifier)
-    alert_service = AlertService(strategy=alert_strategy, event_repo=event_repo)
+    alert_service = AlertService(strategy=alert_strategy, event_repo=event_repo, issue_repo=issue_repo)
 
     sentinel_service = SentinelService(
         llm_call_service=llm_call_service,
@@ -79,6 +79,8 @@ def build_container(app: Flask) -> ServiceContainer:
         sentinel_service=sentinel_service,
         briefing_service=briefing_service,
         telegram_bot=telegram_bot,
+        telegram_notifier=telegram_notifier,
+        event_repo=event_repo,
     )
 
     return ServiceContainer(

@@ -37,6 +37,8 @@ class Settings(db.Model):
     alert_cooldown_minutes = db.Column(db.Integer, nullable=False, default=10)
     alert_rate_limit_count = db.Column(db.Integer, nullable=False, default=20)
     alert_rate_limit_window_seconds = db.Column(db.Integer, nullable=False, default=300)
+    alert_min_classification = db.Column(db.String(16), nullable=False, default="critical")
+    event_retention_days = db.Column(db.Integer, nullable=False, default=14)
 
     llm_timeout_seconds = db.Column(db.Integer, nullable=False, default=20)
     llm_max_retries = db.Column(db.Integer, nullable=False, default=2)
@@ -83,6 +85,8 @@ class Settings(db.Model):
             "alert_cooldown_minutes": self.alert_cooldown_minutes,
             "alert_rate_limit_count": self.alert_rate_limit_count,
             "alert_rate_limit_window_seconds": self.alert_rate_limit_window_seconds,
+            "alert_min_classification": self.alert_min_classification,
+            "event_retention_days": self.event_retention_days,
             "llm_timeout_seconds": self.llm_timeout_seconds,
             "llm_max_retries": self.llm_max_retries,
             "dedup_window_seconds": self.dedup_window_seconds,
