@@ -3,6 +3,11 @@ from __future__ import annotations
 from app.extensions import db
 from app.time_utils import utcnow_naive
 
+DEFAULT_KEYWORD_LIST = (
+    "error,exception,fatal,panic,critical,refused,timeout,traceback,failed,denied,"
+    "killed,oom,unhealthy,segfault,out of memory"
+)
+
 
 class Settings(db.Model):
     __tablename__ = "settings"
@@ -31,7 +36,7 @@ class Settings(db.Model):
     keyword_list = db.Column(
         db.Text,
         nullable=False,
-        default="error,exception,fatal,panic,critical,refused,timeout",
+        default=DEFAULT_KEYWORD_LIST,
     )
 
     alert_cooldown_minutes = db.Column(db.Integer, nullable=False, default=10)

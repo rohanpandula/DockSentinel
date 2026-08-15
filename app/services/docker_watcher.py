@@ -35,27 +35,48 @@ class DockerWatcher:
         self._reconcile_thread: threading.Thread | None = None
 
     def start(self) -> None:
+        # Fresh events per generation: a previous generation's reconcile loop
+        # (which may still be blocked in wait()) keeps its own stop event set,
+        # so it cannot be revived by this start().
+        self._stop_event = threading.Event()
+        self._reconcile_now = threading.Event()
         self._client = docker.from_env()
-        self._stop_event.clear()
 
         self._event_thread = threading.Thread(target=self._watch_events, name="docker-events", daemon=True)
-        self._reconcile_thread = threading.Thread(target=self._reconcile_loop, name="docker-reconcile", daemon=True)
+        self._reconcile_thread = threading.Thread(
+            target=self._reconcile_loop,
+            args=(self._stop_event, self._reconcile_now),
+            name="docker-reconcile",
+            daemon=True,
+        )
         self._event_thread.start()
         self._reconcile_thread.start()
         self.reconcile()
 
     def stop(self) -> None:
         self._stop_event.set()
+        # Wake the reconcile loop so it observes the stop event promptly.
+        self._reconcile_now.set()
 
         with self._lock:
-            for container_id, (_, thread, stop_flag) in list(self._workers.items()):
-                stop_flag.set()
-                thread.join(timeout=1)
-                self._workers.pop(container_id, None)
+            workers = list(self._workers.items())
+            self._workers.clear()
+        for _container_id, (_, thread, stop_flag) in workers:
+            stop_flag.set()
+            thread.join(timeout=1)
 
         if self._client is not None:
-            self._client.close()
+            try:
+                self._client.close()
+            except Exception:  # pragma: no cover - best effort
+                LOGGER.debug("docker client close failed", exc_info=True)
             self._client = None
+
+        for thread in (self._event_thread, self._reconcile_thread):
+            if thread is not None and thread is not threading.current_thread():
+                thread.join(timeout=2)
+        self._event_thread = None
+        self._reconcile_thread = None
 
     def active_container_ids(self) -> list[str]:
         with self._lock:
@@ -89,13 +110,21 @@ class DockerWatcher:
             LOGGER.exception("docker event stream ended with error; relying on periodic reconcile")
             return
 
-    def _reconcile_loop(self) -> None:
-        while not self._stop_event.is_set():
-            triggered = self._reconcile_now.wait(timeout=self.reconcile_interval_seconds)
-            if self._stop_event.is_set():
+    def _reconcile_loop(
+        self,
+        stop_event: threading.Event | None = None,
+        reconcile_now: threading.Event | None = None,
+    ) -> None:
+        # Bind this generation's events so a later start() (which installs
+        # fresh events) can never revive a loop that was told to stop.
+        stop_event = stop_event or self._stop_event
+        reconcile_now = reconcile_now or self._reconcile_now
+        while not stop_event.is_set():
+            triggered = reconcile_now.wait(timeout=self.reconcile_interval_seconds)
+            if stop_event.is_set():
                 break
             if triggered:
-                self._reconcile_now.clear()
+                reconcile_now.clear()
             self.reconcile()
 
     def reconcile(self) -> None:

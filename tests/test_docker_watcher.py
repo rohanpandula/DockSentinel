@@ -132,3 +132,53 @@ def test_stop_flag_ends_tail_promptly():
     thread.join(timeout=3)
     assert not thread.is_alive()
     assert not watcher._reconcile_now.is_set()  # deliberate stop → no re-attach request
+
+
+def test_stop_joins_threads_and_start_uses_fresh_events(monkeypatch):
+    import app.services.docker_watcher as dw
+
+    container = _FakeContainer("c4", "svc", [], status="exited")
+
+    class _EventClient(_Client):
+        def __init__(self, c):
+            super().__init__(c)
+            self.closed = False
+
+        def events(self, decode=True):
+            # Block until the watcher is stopped, like a real event stream.
+            while not watcher._stop_event.is_set():
+                time.sleep(0.01)
+            return iter(())
+
+        def close(self):
+            self.closed = True
+
+    clients = []
+
+    def _from_env():
+        c = _EventClient(container)
+        clients.append(c)
+        return c
+
+    monkeypatch.setattr(dw.docker, "from_env", _from_env)
+
+    watcher = DockerWatcher(lambda *a: None, lambda n: False, reconcile_interval_seconds=3600)
+    watcher.start()
+    gen1_stop, gen1_now = watcher._stop_event, watcher._reconcile_now
+    gen1_event, gen1_reconcile = watcher._event_thread, watcher._reconcile_thread
+    assert gen1_event.is_alive() and gen1_reconcile.is_alive()
+
+    watcher.stop()
+    assert not gen1_event.is_alive()
+    assert not gen1_reconcile.is_alive()  # joined, not leaked
+    assert clients[0].closed
+    assert watcher._event_thread is None and watcher._reconcile_thread is None
+
+    watcher.start()
+    assert watcher._stop_event is not gen1_stop
+    assert watcher._reconcile_now is not gen1_now
+    assert not watcher._stop_event.is_set()
+    assert gen1_stop.is_set()  # old generation stays stopped
+    assert watcher._reconcile_thread.is_alive()
+    watcher.stop()
+    assert not any(t.is_alive() for t in threading.enumerate() if t.name in {"docker-events", "docker-reconcile"})
