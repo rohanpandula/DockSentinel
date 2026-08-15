@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from collections.abc import Callable
 
 import docker
 
+
+LOGGER = logging.getLogger(__name__)
 
 LineCallback = Callable[[str, str, str, bool], None]
 ExcludeCallback = Callable[[str], bool]
@@ -83,6 +86,7 @@ class DockerWatcher:
                     self._detach_container(container_id, container_name)
         except Exception:
             # Reconciliation loop keeps state accurate even if event stream fails.
+            LOGGER.exception("docker event stream ended with error; relying on periodic reconcile")
             return
 
     def _reconcile_loop(self) -> None:
@@ -160,18 +164,58 @@ class DockerWatcher:
         self.line_callback(container_id, container_name or name, "", True)
 
     def _tail_container(self, container_id: str, container_name: str, stop_flag: threading.Event) -> None:
+        """Follow one container's log stream until it stops or the watcher stops.
+
+        Any failure of the stream itself is logged and the worker entry is
+        removed so the next reconcile re-attaches (previously the dead worker
+        stayed registered and the container went silently unmonitored).
+        Failures inside the line callback (DB busy, LLM error) are logged and
+        skipped rather than allowed to kill the stream.
+        """
         if self._client is None:
             return
         try:
-            container = self._client.containers.get(container_id)
-            stream = container.logs(stream=True, follow=True, stdout=True, stderr=True, since=int(time.time()))
-            for payload in stream:
-                if self._stop_event.is_set() or stop_flag.is_set():
+            since = int(time.time())
+            backoff = 1.0
+            while not (self._stop_event.is_set() or stop_flag.is_set()):
+                container = self._client.containers.get(container_id)
+                if container.status not in {"running", "restarting"}:
                     break
-                line = payload.decode("utf-8", errors="replace").rstrip("\n")
-                if line:
-                    self.line_callback(container_id, container_name, line, False)
+                try:
+                    stream = container.logs(stream=True, follow=True, stdout=True, stderr=True, since=since)
+                    for payload in stream:
+                        if self._stop_event.is_set() or stop_flag.is_set():
+                            break
+                        since = int(time.time())
+                        backoff = 1.0
+                        line = payload.decode("utf-8", errors="replace").rstrip("\n")
+                        if not line:
+                            continue
+                        try:
+                            self.line_callback(container_id, container_name, line, False)
+                        except Exception:
+                            LOGGER.exception("log line handler failed for container %s", container_name)
+                    # Stream closed cleanly (container stopped) or we were told to stop.
+                    break
+                except Exception:
+                    # Typical cause: docker-py's per-read timeout on a quiet container.
+                    # Reconnect from where we left off instead of dropping the container.
+                    LOGGER.debug("log stream for %s dropped; reconnecting in %.0fs", container_name, backoff, exc_info=True)
+                    if stop_flag.wait(backoff):
+                        break
+                    backoff = min(backoff * 2, 30.0)
         except Exception:
-            return
+            LOGGER.exception("log stream for container %s ended with error", container_name)
         finally:
-            self.line_callback(container_id, container_name, "", True)
+            with self._lock:
+                worker = self._workers.get(container_id)
+                if worker is not None and worker[2] is stop_flag:
+                    self._workers.pop(container_id, None)
+            try:
+                self.line_callback(container_id, container_name, "", True)
+            except Exception:
+                LOGGER.exception("final flush failed for container %s", container_name)
+            if not self._stop_event.is_set() and not stop_flag.is_set():
+                # Stream ended on its own (daemon hiccup, read timeout): ask the
+                # reconcile loop to re-attach promptly instead of waiting a full interval.
+                self._reconcile_now.set()

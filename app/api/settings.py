@@ -4,39 +4,11 @@ from flask import Blueprint, current_app, jsonify
 from flask_pydantic import validate
 
 from app.config_objects import LLMConfig
-from app.schemas.settings import SettingsSchema, TestLLMResponse, UpdateSettingsBody
+from app.schemas.settings import ALLOWED_SETTINGS_FIELDS, MASK, SECRET_FIELDS, SettingsSchema, TestLLMResponse, UpdateSettingsBody
 
 bp = Blueprint("settings_api", __name__, url_prefix="/api")
 
-_ALLOWED_FIELDS = {
-    "llm_base_url",
-    "llm_api_key",
-    "llm_model",
-    "llm_provider",
-    "llm_transport",
-    "cli_backend",
-    "cli_timeout_seconds",
-    "cli_max_retries",
-    "telegram_token",
-    "telegram_chat_id",
-    "nightly_hour",
-    "nightly_minute",
-    "max_input_chars",
-    "max_input_tokens",
-    "reserved_output_tokens",
-    "token_estimation_strategy",
-    "keyword_list",
-    "alert_cooldown_minutes",
-    "alert_rate_limit_count",
-    "alert_rate_limit_window_seconds",
-    "llm_timeout_seconds",
-    "llm_max_retries",
-    "dedup_window_seconds",
-    "container_rate_limit_count",
-    "container_rate_limit_window_seconds",
-    "keyword_flush_delay_lines",
-    "chunk_coalesce_window_seconds",
-}
+_ALLOWED_FIELDS = ALLOWED_SETTINGS_FIELDS
 
 
 @bp.get("/settings")
@@ -53,8 +25,13 @@ def update_settings(body: UpdateSettingsBody):
     settings = services.settings_repo.get()
 
     for key, value in body.model_dump(exclude_unset=True).items():
-        if key in _ALLOWED_FIELDS:
-            setattr(settings, key, value)
+        if key not in _ALLOWED_FIELDS:
+            continue
+        # Secrets are never echoed back (masked), so a masked/blank value on
+        # write means "keep the current secret" rather than overwrite it.
+        if key in SECRET_FIELDS and (value is None or value.strip() in {"", MASK}):
+            continue
+        setattr(settings, key, value)
 
     services.settings_repo.save()
     services.coordinator.refresh_schedule()

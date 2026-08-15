@@ -75,6 +75,8 @@ def create_app() -> Flask:
         seed_defaults()
         app.extensions["services"] = build_container(app)
 
+    from app.security import install_security
+    install_security(app)
     _register_blueprints(app)
     from app.errors import register_error_handlers
     register_error_handlers(app)

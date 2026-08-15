@@ -8,6 +8,12 @@
   </div>
 </div>
 
+{% if errors %}
+<div class="card card--padded" style="border-color:#c0392b">
+  <strong>Settings not saved:</strong>
+  <ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
 <form method="post" class="stack">
   <section class="card card--padded">
     <div class="card__header">
@@ -32,7 +38,7 @@
       </label>
       <label class="field">
         <span class="field__label">API key</span>
-        <input class="input mono" name="llm_api_key" value="{{ settings.llm_api_key }}" type="password" />
+        <input class="input mono" name="llm_api_key" value="" type="password" autocomplete="new-password" placeholder="{{ 'set — leave blank to keep' if settings.llm_api_key else 'not set' }}" />
       </label>
       <label class="field">
         <span class="field__label">Model</span>
@@ -104,7 +110,7 @@
     <div class="field-grid">
       <label class="field">
         <span class="field__label">Telegram token</span>
-        <input class="input mono" name="telegram_token" value="{{ settings.telegram_token or '' }}" type="password" />
+        <input class="input mono" name="telegram_token" value="" type="password" autocomplete="new-password" placeholder="{{ 'set — leave blank to keep' if settings.telegram_token else 'not set' }}" />
       </label>
       <label class="field">
         <span class="field__label">Telegram chat id</span>

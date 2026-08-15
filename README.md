@@ -166,6 +166,8 @@ Backend wrappers live in `llm-backends/` and follow a stdin/stdout contract: rea
 | `MDNS_ENABLED` | `false` | Publish `<hostname>.local` via zeroconf |
 | `MDNS_HOSTNAME` | `docksentinel` | Advertised hostname |
 | `MDNS_PORT` | `5000` | Port advertised in the mDNS service record |
+| `BASIC_AUTH_USER` | *(unset)* | With `BASIC_AUTH_PASSWORD`, require HTTP basic auth on every route except `/api/health` |
+| `BASIC_AUTH_PASSWORD` | *(unset)* | Password for basic auth (both vars must be set to enable) |
 
 ## API Endpoints
 
@@ -322,6 +324,8 @@ No `LICENSE` file is currently committed. Until one is added, default copyright 
 
 ## Security Notes
 
-- **Trusted-network only.** No authentication layer yet; anyone on your LAN can reach the UI and API.
+- **Set `BASIC_AUTH_USER` / `BASIC_AUTH_PASSWORD`** unless the app is only reachable from a trusted network. Without them anyone who can reach the port can change settings and read events.
+- **Secrets are write-only.** `GET /api/settings` and the Settings page return `********` for `llm_api_key`/`telegram_token`; sending a blank or masked value on write keeps the stored secret.
+- **Cross-site writes are rejected.** State-changing requests whose `Origin`/`Referer` host differs from the app's host get `403`, so a malicious web page can't drive the API from the operator's browser.
 - **Telegram bot privacy:** for group chats, disable *privacy mode* in @BotFather or the bot won't receive your callbacks. 1:1 chats work out of the box.
 - **Fail-closed defaults:** a misconfigured LLM or Telegram returns a clear error envelope and the health endpoint reports `degraded` — it does not silently swallow failures.

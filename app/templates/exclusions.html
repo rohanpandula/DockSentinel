@@ -35,7 +35,7 @@
               {% endif %}
             </td>
             <td style="text-align: right;">
-              <a class="btn btn--danger btn--sm" href="{{ url_for('exclusions_delete', rule_id=rule.id) }}">Delete</a>
+              <form method="post" action="{{ url_for('exclusions_delete', rule_id=rule.id) }}" style="display:inline"><button class="btn btn--danger btn--sm" type="submit">Delete</button></form>
             </td>
           </tr>
         {% else %}

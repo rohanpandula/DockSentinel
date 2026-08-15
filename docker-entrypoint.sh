@@ -1,10 +1,16 @@
 #!/bin/sh
 set -e
 
-# If this is an existing v0.2 database (no alembic_version table), stamp it
-# so Alembic doesn't try to re-create tables that already exist.
-NEEDS_STAMP=$(python - <<'PYEOF'
+# Legacy (pre-Alembic) databases have tables but no alembic_version row.
+# Detect how far their schema actually got and stamp THAT revision — never
+# `head` — so every later migration still runs on upgrade.
+#   - settings table without the 0002 compat columns  -> stamp 0001
+#   - settings table with the 0002 compat columns     -> stamp 0002
+STAMP_REV=$(python - <<'PYEOF'
 import os, sqlite3, sys
+
+REV_0001 = "5ca5251db402"
+REV_0002 = "8b3f1a2c9d45"
 
 db_url = os.environ.get("DATABASE_URL", "")
 if db_url.startswith("sqlite:////"):
@@ -14,16 +20,19 @@ if db_url.startswith("sqlite:////"):
         tables = [r[0] for r in conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table'"
         ).fetchall()]
-        conn.close()
         if "settings" in tables and "alembic_version" not in tables:
-            print("yes")
+            cols = [r[1] for r in conn.execute("PRAGMA table_info(settings)").fetchall()]
+            print(REV_0002 if "keyword_flush_delay_lines" in cols else REV_0001)
+            conn.close()
             sys.exit(0)
-print("no")
+        conn.close()
+print("")
 PYEOF
 )
 
-if [ "$NEEDS_STAMP" = "yes" ]; then
-    alembic stamp head
+if [ -n "$STAMP_REV" ]; then
+    echo "legacy database detected; stamping alembic revision $STAMP_REV"
+    alembic stamp "$STAMP_REV"
 fi
 
 alembic upgrade head

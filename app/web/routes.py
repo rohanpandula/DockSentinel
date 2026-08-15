@@ -4,8 +4,11 @@ from datetime import datetime
 
 from flask import Blueprint, current_app, redirect, render_template, request, url_for
 
+from pydantic import ValidationError
+
 from app.extensions import db
 from app.models import ExclusionRule, PromptKey, SentinelState
+from app.schemas.settings import ALLOWED_SETTINGS_FIELDS, MASK, SECRET_FIELDS, UpdateSettingsBody
 from app.time_utils import utcnow_naive
 
 bp = Blueprint("web", __name__, url_prefix="")
@@ -62,29 +65,22 @@ def settings_page():
     container = current_app.extensions["services"]
     settings = container.settings_repo.get()
     if request.method == "POST":
-        for key, value in request.form.items():
-            if hasattr(settings, key):
-                cast_value = value
-                if key in {
-                    "nightly_hour",
-                    "nightly_minute",
-                    "max_input_chars",
-                    "max_input_tokens",
-                    "reserved_output_tokens",
-                    "alert_cooldown_minutes",
-                    "alert_rate_limit_count",
-                    "alert_rate_limit_window_seconds",
-                    "llm_timeout_seconds",
-                    "llm_max_retries",
-                    "cli_timeout_seconds",
-                    "cli_max_retries",
-                    "dedup_window_seconds",
-                    "container_rate_limit_count",
-                    "container_rate_limit_window_seconds",
-                    "keyword_flush_delay_lines",
-                }:
-                    cast_value = int(value)
-                setattr(settings, key, cast_value)
+        # Same allowlist + validation as PUT /api/settings; blank/masked secret
+        # fields mean "keep current value". Unknown/blank fields are ignored.
+        raw = {
+            key: value
+            for key, value in request.form.items()
+            if key in ALLOWED_SETTINGS_FIELDS and value.strip() != ""
+        }
+        try:
+            body = UpdateSettingsBody.model_validate(raw)
+        except ValidationError as exc:
+            errors = [f"{'.'.join(str(p) for p in e['loc'])}: {e['msg']}" for e in exc.errors()]
+            return render_template("settings.html", settings=settings, errors=errors), 400
+        for key, value in body.model_dump(exclude_unset=True).items():
+            if key in SECRET_FIELDS and (value is None or value.strip() in {"", MASK}):
+                continue
+            setattr(settings, key, value)
         container.settings_repo.save()
         container.coordinator.refresh_schedule()
         return redirect(url_for("settings_page"))
@@ -108,7 +104,7 @@ def exclusions_page():
     return render_template("exclusions.html", exclusions=exclusions)
 
 
-@bp.route("/exclusions/delete/<int:rule_id>", endpoint="exclusions_delete")
+@bp.route("/exclusions/delete/<int:rule_id>", methods=["POST"], endpoint="exclusions_delete")
 def exclusions_delete(rule_id: int):
     container = current_app.extensions["services"]
     rule = container.exclusion_repo.get(rule_id)
