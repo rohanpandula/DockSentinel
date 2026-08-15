@@ -25,7 +25,7 @@
         <li>
           <a class="row-link {% if is_selected %}row-link--active{% endif %}" {% if is_selected %}aria-current="true"{% endif %} href="{{ url_for('reports_page', id=report.id) }}">
             <span class="row-link__id">#{{ report.id }}</span>
-            <span class="row-link__title text-mono text-sm text-secondary">{{ report.created_at }}</span>
+            <span class="row-link__title text-mono text-sm text-secondary">{{ report.created_at|dt }}</span>
             {% if report.status == 'generated' %}
               <span class="badge badge--ok">{{ report.status }}</span>
             {% elif report.status == 'llm_error' %}
@@ -55,7 +55,7 @@
       <div class="detail-head">
         <div>
           <h2 class="detail-head__title">Report #{{ selected_report.id }}</h2>
-          <p class="detail-head__meta text-mono">{{ selected_report.period_start }} → {{ selected_report.period_end }}</p>
+          <p class="detail-head__meta text-mono">{{ selected_report.period_start|dt }} → {{ selected_report.period_end|dt }}</p>
         </div>
         <div class="row row--end">
           {% if selected_report.status == 'generated' %}<span class="badge badge--ok">generated</span>

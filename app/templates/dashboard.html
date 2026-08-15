@@ -2,7 +2,8 @@
 {% block title %}DockSentinel — Overview{% endblock %}
 {% block content %}
 {% set telegram_ready = settings and settings.telegram_token and settings.telegram_chat_id %}
-{% set llm_ready = settings and settings.llm_model and (settings.llm_transport == 'cli' or settings.llm_base_url) %}
+{# LLM counts as configured only once a Test LLM has succeeded (state.llm_last_test_ok_at) — defaults alone don't tick it. #}
+{% set llm_ready = state.llm_last_test_ok_at is not none %}
 {% set degraded = state.enabled and (state.llm_failure_count > 0 or state.last_error) %}
 {% set show_checklist = (not state.enabled) or (not telegram_ready) or (not llm_ready) %}
 
@@ -140,7 +141,7 @@
           <tbody>
             {% for e in events %}
               <tr>
-                <td class="table__time">{{ e.created_at }}</td>
+                <td class="table__time">{{ e.created_at|dt }}</td>
                 <td class="table__container"><a class="text-accent" href="{{ url_for('insights_page', container=e.container_name) }}">{{ e.container_name }}</a></td>
                 <td>
                   {% if e.classification == 'critical' %}
@@ -189,7 +190,7 @@
         <div class="checklist__item {% if llm_ready %}checklist__item--done{% endif %}">
           <span class="checklist__mark" aria-hidden="true"><svg><use href="#ico-check"/></svg></span>
           <span class="checklist__label">Configure the LLM
-            <span class="checklist__hint">{% if llm_ready %}{{ settings.llm_transport }} · {{ settings.llm_model }}{% else %}Set a base URL and model.{% endif %}</span>
+            <span class="checklist__hint">{% if llm_ready %}{{ settings.llm_transport }} · {{ settings.llm_model }} · verified {{ state.llm_last_test_ok_at|dt }}{% else %}Set base URL + model in Settings, then press “Test LLM”.{% endif %}</span>
           </span>
           <a class="btn btn--sm btn--ghost" href="{{ url_for('settings_page') }}#llm">Open</a>
         </div>
@@ -252,7 +253,7 @@
       {% if latest_report %}
         <a class="row-link" style="border:0; padding:0;" href="{{ url_for('reports_page', id=latest_report.id) }}">
           <span class="row-link__id">#{{ latest_report.id }}</span>
-          <span class="row-link__title text-mono text-sm">{{ latest_report.created_at }}</span>
+          <span class="row-link__title text-mono text-sm">{{ latest_report.created_at|dt }}</span>
           {% if latest_report.status == 'generated' %}<span class="badge badge--ok">generated</span>{% elif latest_report.status == 'llm_error' %}<span class="badge badge--critical">llm error</span>{% else %}<span class="badge badge--neutral">{{ latest_report.status }}</span>{% endif %}
         </a>
       {% else %}

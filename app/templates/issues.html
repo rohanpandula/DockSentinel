@@ -64,7 +64,7 @@
         <div class="flex-1">
           <h2 class="detail-head__title">#{{ selected.id }} · {{ selected.title }}</h2>
           <p class="detail-head__meta">
-            <span class="text-mono">{{ selected.container_name }}</span> · created {{ selected.created_at }} · updated {{ selected.updated_at }}
+            <span class="text-mono">{{ selected.container_name }}</span> · created {{ selected.created_at|dt }} · updated {{ selected.updated_at|dt }}
           </p>
         </div>
         <div class="row row--end">
@@ -84,7 +84,7 @@
         {% endif %}
       </div>
 
-      <pre class="report-view mt-4 scroll-y">{{ selected.body }}</pre>
+      <div class="prose report-view mt-4 scroll-y">{{ selected_body_html }}</div>
 
       {% if selected.discussion %}
         <h3 class="section-title mt-6 mb-2" style="font-size:15px;">Discussion</h3>

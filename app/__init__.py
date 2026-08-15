@@ -60,12 +60,23 @@ class ISOJSONProvider(DefaultJSONProvider):
         return DefaultJSONProvider.default(o)
 
 
+def _fmt_dt(value, fmt: str = "%Y-%m-%d %H:%M:%S"):
+    """Jinja filter: readable timestamps (no microseconds); passthrough for None/str."""
+    if value is None or value == "":
+        return "—"
+    try:
+        return value.strftime(fmt)
+    except AttributeError:
+        return str(value)
+
+
 def create_app() -> Flask:
     load_dotenv()
     config = AppConfig.from_env()
 
     app = Flask(__name__)
     app.json = ISOJSONProvider(app)
+    app.jinja_env.filters["dt"] = _fmt_dt
     app.config["SECRET_KEY"] = config.secret_key
     app.config["SQLALCHEMY_DATABASE_URI"] = config.database_url
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False

@@ -270,6 +270,7 @@ def issues_page():
 
     return render_template(
         "issues.html",
+        selected_body_html=Markup(render_markdown(selected.body)) if selected and selected.body else Markup(""),
         issues=issues,
         counts=counts,
         selected=selected,

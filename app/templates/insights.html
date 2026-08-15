@@ -58,16 +58,20 @@
       <details class="disclosure">
         <summary class="disclosure__summary">
           <svg class="disclosure__caret" aria-hidden="true"><use href="#ico-chevron"/></svg>
-          <span class="table__time">{{ e.created_at }}</span>
+          <span class="table__time">{{ e.created_at|dt }}</span>
           <span class="table__container truncate" title="{{ e.container_name }}">{{ e.container_name }}</span>
           {% if e.classification == 'critical' %}
             <span class="badge badge--critical">critical</span>
           {% elif e.classification == 'warning' %}
             <span class="badge badge--warning">warning</span>
+          {% elif e.classification == 'noise' %}
+            <span class="badge badge--noise">noise</span>
+          {% elif e.status in ('llm_error', 'parse_error') %}
+            <span class="badge badge--critical badge--no-dot" title="Pipeline error — no classification">error</span>
           {% else %}
-            <span class="badge badge--noise">{{ e.classification or 'noise' }}</span>
+            <span class="badge badge--neutral badge--no-dot" title="Not classified">—</span>
           {% endif %}
-          <span class="disclosure__text">{{ e.summary or e.status }}</span>
+          <span class="disclosure__text">{{ e.summary or e.status|replace('_', ' ') }}</span>
           <span class="disclosure__flags">
             {% if e.status != 'analyzed' %}
               <span class="badge badge--neutral badge--no-dot" title="Pipeline status">{{ e.status }}</span>
