@@ -1,25 +1,31 @@
 {% extends "base.html" %}
 {% block title %}DockSentinel — Reports{% endblock %}
 {% block content %}
-<div class="page-header">
+<div class="page-head">
   <div>
-    <h1 class="page-title">Reports</h1>
-    <p class="page-subtitle">Nightly health briefings generated from the day's classified events.</p>
+    <h1 class="page-head__title">Reports</h1>
+    <p class="page-head__sub">Nightly health briefings generated from the day's classified events.</p>
   </div>
-  <form method="post" action="{{ url_for('reports_generate') }}">
-    <button class="btn btn--primary">Generate now</button>
-  </form>
+  <div class="page-head__actions">
+    <form method="post" action="{{ url_for('reports_generate') }}">
+      <button class="btn btn--primary"><svg aria-hidden="true"><use href="#ico-doc"/></svg>Generate now</button>
+    </form>
+  </div>
 </div>
 
-<div class="grid" style="grid-template-columns: 300px 1fr; align-items: start;">
-  <section class="card">
-    <h2 class="card__title">Archive</h2>
-    <ul class="list-reset mt-md">
+<div class="split split--narrow">
+  <section class="card" aria-label="Report archive">
+    <div class="card__head">
+      <h2 class="card__title">Archive</h2>
+      <span class="text-tertiary text-xs">{{ reports|length }}</span>
+    </div>
+    <ul class="list-reset">
       {% for report in reports %}
+        {% set is_selected = selected_report and selected_report.id == report.id %}
         <li>
-          <a class="report-link" href="{{ url_for('reports_page', id=report.id) }}">
-            <span class="report-link__id">#{{ report.id }}</span>
-            <span class="text-mono text-secondary">{{ report.created_at }}</span>
+          <a class="row-link {% if is_selected %}row-link--active{% endif %}" {% if is_selected %}aria-current="true"{% endif %} href="{{ url_for('reports_page', id=report.id) }}">
+            <span class="row-link__id">#{{ report.id }}</span>
+            <span class="row-link__title text-mono text-sm text-secondary">{{ report.created_at }}</span>
             {% if report.status == 'generated' %}
               <span class="badge badge--ok">{{ report.status }}</span>
             {% elif report.status == 'llm_error' %}
@@ -31,56 +37,57 @@
         </li>
       {% else %}
         <li>
-          <div class="empty">
-            <div class="empty__icon">∅</div>
+          <div class="empty empty--compact">
+            <div class="empty__icon"><svg aria-hidden="true"><use href="#ico-doc"/></svg></div>
             <p class="empty__title">No reports yet</p>
-            <p>Click "Generate now" or wait for the nightly scheduler.</p>
+            <p>The scheduler writes one each night. You can also generate one right now.</p>
+            <form method="post" action="{{ url_for('reports_generate') }}">
+              <button class="btn btn--primary btn--sm">Generate now</button>
+            </form>
           </div>
         </li>
       {% endfor %}
     </ul>
   </section>
 
-  <section class="card card--padded">
+  <section class="card card--pad" aria-label="Report">
     {% if selected_report %}
-      <div class="card__header">
-        <h2 class="card__title card__title--lg">Report #{{ selected_report.id }}</h2>
-        <span class="text-mono text-tertiary">{{ selected_report.period_start }} → {{ selected_report.period_end }}</span>
+      <div class="detail-head">
+        <div>
+          <h2 class="detail-head__title">Report #{{ selected_report.id }}</h2>
+          <p class="detail-head__meta text-mono">{{ selected_report.period_start }} → {{ selected_report.period_end }}</p>
+        </div>
+        <div class="row row--end">
+          {% if selected_report.status == 'generated' %}<span class="badge badge--ok">generated</span>
+          {% elif selected_report.status == 'llm_error' %}<span class="badge badge--critical">llm error</span>
+          {% else %}<span class="badge badge--neutral">{{ selected_report.status }}</span>{% endif %}
+        </div>
       </div>
+
+      <div class="meta-strip mt-4">
+        <span><span class="eyebrow">Model</span> <span class="text-mono">{{ selected_report.model or '—' }}</span></span>
+        <span class="text-tertiary">·</span>
+        <span><span class="eyebrow">Prompt</span> v{{ selected_report.prompt_version }}</span>
+      </div>
+
       {% if selected_report.status == 'llm_error' %}
-        <div class="card card--padded" style="border-color: var(--critical); margin-bottom: 12px;">
-          <strong>LLM call failed</strong> — showing the fallback summary.
-          {% if selected_report.error %}<div class="text-mono text-secondary" style="margin-top:6px;">{{ selected_report.error }}</div>{% endif %}
+        <div class="banner banner--critical mt-4">
+          <svg class="banner__icon" aria-hidden="true"><use href="#ico-alert"/></svg>
+          <div class="banner__body">
+            <p><span class="banner__title">LLM call failed</span> — showing the fallback summary.</p>
+            {% if selected_report.error %}<p class="text-mono text-sm text-secondary mt-1 break">{{ selected_report.error }}</p>{% endif %}
+          </div>
         </div>
       {% endif %}
-      <div class="text-tertiary" style="font-size: 11px; margin-bottom: 8px;">
-        model: <span class="text-mono">{{ selected_report.model or '—' }}</span> · prompt v{{ selected_report.prompt_version }}
-      </div>
-      <div class="report-view report-view--rendered">{{ report_html }}</div>
+
+      <article class="prose mt-4">{{ report_html }}</article>
     {% else %}
       <div class="empty">
-        <div class="empty__icon">◦</div>
+        <div class="empty__icon"><svg aria-hidden="true"><use href="#ico-doc"/></svg></div>
         <p class="empty__title">Pick a report</p>
-        <p>Select an entry from the archive to view the briefing.</p>
+        <p>Select an entry from the archive to read the briefing.</p>
       </div>
     {% endif %}
   </section>
 </div>
-
-<style>
-  .report-view--rendered { white-space: normal; font-family: inherit; font-size: 13.5px; }
-  .report-view--rendered h1, .report-view--rendered h2, .report-view--rendered h3,
-  .report-view--rendered h4 { margin: 14px 0 6px; font-size: 14px; font-weight: 600; }
-  .report-view--rendered h1 { font-size: 16px; }
-  .report-view--rendered h2 { font-size: 15px; }
-  .report-view--rendered p { margin: 6px 0; }
-  .report-view--rendered ul, .report-view--rendered ol { margin: 6px 0 6px 20px; }
-  .report-view--rendered li { margin: 2px 0; }
-  .report-view--rendered code { font-family: var(--font-mono); font-size: 12px; background: var(--bg-elevated, rgba(127,127,127,.15)); padding: 1px 4px; border-radius: 3px; }
-  .report-view--rendered pre { font-family: var(--font-mono); font-size: 12px; white-space: pre-wrap; padding: 8px 10px; border-radius: 4px; background: var(--bg-elevated, rgba(127,127,127,.15)); }
-  .report-view--rendered pre code { background: none; padding: 0; }
-  @media (max-width: 900px) {
-    main .grid[style*="300px"] { grid-template-columns: 1fr !important; }
-  }
-</style>
 {% endblock %}

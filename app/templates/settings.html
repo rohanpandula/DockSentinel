@@ -1,197 +1,209 @@
 {% extends "base.html" %}
 {% block title %}DockSentinel — Settings{% endblock %}
+{% macro num(name, label, value, help=None, min=None, max=None, wide=False) -%}
+  <label class="field {% if wide %}field--wide{% endif %}">
+    <span class="field__label">{{ label }}</span>
+    <input class="input tabular" type="number" name="{{ name }}" value="{{ value }}" {% if min is not none %}min="{{ min }}"{% endif %} {% if max is not none %}max="{{ max }}"{% endif %} />
+    {% if help %}<span class="field__help">{{ help }}</span>{% endif %}
+  </label>
+{%- endmacro %}
 {% block content %}
-<div class="page-header">
+<div class="page-head">
   <div>
-    <h1 class="page-title">Settings</h1>
-    <p class="page-subtitle">LLM transport, Telegram alerts, rate limits, and scheduler configuration.</p>
+    <h1 class="page-head__title">Settings</h1>
+    <p class="page-head__sub">LLM transport, Telegram alerts, rate limits, and the nightly scheduler. Secrets are write-only: blank means “keep the stored value”.</p>
   </div>
 </div>
 
 {% if errors %}
-<div class="card card--padded" style="border-color:#c0392b">
-  <strong>Settings not saved:</strong>
-  <ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
+<div class="banner banner--critical" role="alert" id="settings-errors">
+  <svg class="banner__icon" aria-hidden="true"><use href="#ico-alert"/></svg>
+  <div class="banner__body">
+    <p class="banner__title">Settings not saved — fix the following and try again.</p>
+    <ul>{% for e in errors %}<li class="text-mono text-sm">{{ e }}</li>{% endfor %}</ul>
+  </div>
 </div>
 {% endif %}
-<form method="post" class="stack">
-  <section class="card card--padded">
-    <div class="card__header">
-      <h2 class="card__title card__title--lg">LLM</h2>
-      <span class="badge badge--neutral badge--no-dot">{{ settings.llm_transport }}</span>
-    </div>
-    <div class="field-grid">
-      <label class="field">
-        <span class="field__label">Transport</span>
-        <select class="select" name="llm_transport">
-          <option value="api" {% if settings.llm_transport == 'api' %}selected{% endif %}>api</option>
-          <option value="cli" {% if settings.llm_transport == 'cli' %}selected{% endif %}>cli</option>
-        </select>
-      </label>
-      <label class="field">
-        <span class="field__label">Provider</span>
-        <input class="input" name="llm_provider" value="{{ settings.llm_provider }}" />
-      </label>
-      <label class="field">
-        <span class="field__label">Base URL</span>
-        <input class="input mono" name="llm_base_url" value="{{ settings.llm_base_url }}" />
-      </label>
-      <label class="field">
-        <span class="field__label">API key</span>
-        <input class="input mono" name="llm_api_key" value="" type="password" autocomplete="new-password" placeholder="{{ 'set — leave blank to keep' if settings.llm_api_key else 'not set' }}" />
-      </label>
-      <label class="field">
-        <span class="field__label">Model</span>
-        <input class="input mono" name="llm_model" value="{{ settings.llm_model }}" />
-      </label>
-      <label class="field">
-        <span class="field__label">CLI backend</span>
-        <select class="select" name="cli_backend">
-          <option value="codex" {% if settings.cli_backend == 'codex' %}selected{% endif %}>codex</option>
-          <option value="claude" {% if settings.cli_backend == 'claude' %}selected{% endif %}>claude</option>
-          <option value="gemini" {% if settings.cli_backend == 'gemini' %}selected{% endif %}>gemini</option>
-          <option value="ollama" {% if settings.cli_backend == 'ollama' %}selected{% endif %}>ollama</option>
-        </select>
-      </label>
-      <label class="field">
-        <span class="field__label">CLI timeout (s)</span>
-        <input class="input tabular" type="number" min="1" name="cli_timeout_seconds" value="{{ settings.cli_timeout_seconds }}" />
-      </label>
-      <label class="field">
-        <span class="field__label">CLI max retries</span>
-        <input class="input tabular" type="number" min="0" name="cli_max_retries" value="{{ settings.cli_max_retries }}" />
-      </label>
-      <label class="field">
-        <span class="field__label">LLM timeout (s)</span>
-        <input class="input tabular" type="number" name="llm_timeout_seconds" value="{{ settings.llm_timeout_seconds }}" />
-      </label>
-      <label class="field">
-        <span class="field__label">LLM max retries</span>
-        <input class="input tabular" type="number" name="llm_max_retries" value="{{ settings.llm_max_retries }}" />
-      </label>
-    </div>
-  </section>
 
-  <section class="card card--padded">
-    <div class="card__header">
-      <h2 class="card__title card__title--lg">Input budgets</h2>
-    </div>
-    <div class="field-grid">
-      <label class="field">
-        <span class="field__label">Max input chars</span>
-        <input class="input tabular" type="number" name="max_input_chars" value="{{ settings.max_input_chars }}" />
-      </label>
-      <label class="field">
-        <span class="field__label">Max input tokens</span>
-        <input class="input tabular" type="number" name="max_input_tokens" value="{{ settings.max_input_tokens }}" />
-      </label>
-      <label class="field">
-        <span class="field__label">Reserved output tokens</span>
-        <input class="input tabular" type="number" name="reserved_output_tokens" value="{{ settings.reserved_output_tokens }}" />
-      </label>
-      <label class="field">
-        <span class="field__label">Token strategy</span>
-        <select class="select" name="token_estimation_strategy">
-          <option value="chars" {% if settings.token_estimation_strategy == 'chars' %}selected{% endif %}>chars</option>
-          <option value="tiktoken" {% if settings.token_estimation_strategy == 'tiktoken' %}selected{% endif %}>tiktoken</option>
-        </select>
-      </label>
-      <label class="field field-grid__wide">
-        <span class="field__label">Keyword list</span>
-        <input class="input mono" name="keyword_list" value="{{ settings.keyword_list }}" />
-      </label>
-    </div>
-  </section>
+<div class="settings">
+  <nav class="settings__nav" aria-label="Settings sections" data-section-nav>
+    <a href="#llm">LLM</a>
+    <a href="#budgets">Input budgets</a>
+    <a href="#alerts">Alerts &amp; Telegram</a>
+    <a href="#limits">Rate limits</a>
+    <a href="#scheduler">Scheduler</a>
+  </nav>
 
-  <section class="card card--padded">
-    <div class="card__header">
-      <h2 class="card__title card__title--lg">Alerts &amp; rate limits</h2>
-    </div>
-    <div class="field-grid">
-      <label class="field">
-        <span class="field__label">Telegram token</span>
-        <input class="input mono" name="telegram_token" value="" type="password" autocomplete="new-password" placeholder="{{ 'set — leave blank to keep' if settings.telegram_token else 'not set' }}" />
-      </label>
-      <label class="field">
-        <span class="field__label">Telegram chat id</span>
-        <input class="input mono" name="telegram_chat_id" value="{{ settings.telegram_chat_id or '' }}" />
-      </label>
-      <label class="field">
-        <span class="field__label">Alert on classification ≥</span>
-        <select class="input" name="alert_min_classification">
-          {% for opt in ["critical", "warning", "noise"] %}
-          <option value="{{ opt }}" {% if settings.alert_min_classification == opt %}selected{% endif %}>{{ opt }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <label class="field">
-        <span class="field__label">Alert cooldown (min)</span>
-        <input class="input tabular" type="number" name="alert_cooldown_minutes" value="{{ settings.alert_cooldown_minutes }}" />
-      </label>
-      <label class="field">
-        <span class="field__label">Restart-storm: exits</span>
-        <input class="input tabular" type="number" min="1" name="restart_alert_count" value="{{ settings.restart_alert_count }}" />
-      </label>
-      <label class="field">
-        <span class="field__label">Restart-storm window (min)</span>
-        <input class="input tabular" type="number" min="1" name="restart_alert_window_minutes" value="{{ settings.restart_alert_window_minutes }}" />
-      </label>
-      <label class="field">
-        <span class="field__label">Keep skipped/noise events (days)</span>
-        <input class="input tabular" type="number" min="1" name="event_retention_days" value="{{ settings.event_retention_days }}" />
-      </label>
-      <label class="field">
-        <span class="field__label">Alert rate-limit count</span>
-        <input class="input tabular" type="number" name="alert_rate_limit_count" value="{{ settings.alert_rate_limit_count }}" />
-      </label>
-      <label class="field">
-        <span class="field__label">Alert rate window (s)</span>
-        <input class="input tabular" type="number" name="alert_rate_limit_window_seconds" value="{{ settings.alert_rate_limit_window_seconds }}" />
-      </label>
-      <label class="field">
-        <span class="field__label">Dedup window (s)</span>
-        <input class="input tabular" type="number" min="0" name="dedup_window_seconds" value="{{ settings.dedup_window_seconds }}" />
-      </label>
-      <label class="field">
-        <span class="field__label">Container rate count</span>
-        <input class="input tabular" type="number" min="1" name="container_rate_limit_count" value="{{ settings.container_rate_limit_count }}" />
-      </label>
-      <label class="field">
-        <span class="field__label">Container rate window (s)</span>
-        <input class="input tabular" type="number" min="60" name="container_rate_limit_window_seconds" value="{{ settings.container_rate_limit_window_seconds }}" />
-      </label>
-      <label class="field">
-        <span class="field__label">Keyword flush delay (lines)</span>
-        <input class="input tabular" type="number" min="0" name="keyword_flush_delay_lines" value="{{ settings.keyword_flush_delay_lines }}" />
-      </label>
-      <label class="field field-grid__wide">
-        <span class="field__label">Coalesce window (seconds) — hold matched chunks per container; 0 disables</span>
-        <input class="input tabular" type="number" min="0" name="chunk_coalesce_window_seconds" value="{{ settings.chunk_coalesce_window_seconds }}" />
-      </label>
-    </div>
-  </section>
+  <form method="post" class="settings__body" id="settings-form">
+    <!-- LLM -->
+    <section class="card card--pad settings__section" id="llm" aria-labelledby="llm-title">
+      <div class="card__head">
+        <div>
+          <h2 id="llm-title">LLM</h2>
+          <p class="settings__section-sub">Where triage requests go. <strong>api</strong> speaks OpenAI-compatible chat completions; <strong>cli</strong> shells out to a local agent CLI.</p>
+        </div>
+        <span class="badge badge--accent badge--no-dot">{{ settings.llm_transport }}{% if settings.llm_transport == 'cli' %} · {{ settings.cli_backend }}{% endif %}</span>
+      </div>
+      <div class="field-grid">
+        <label class="field">
+          <span class="field__label">Transport</span>
+          <select class="select" name="llm_transport">
+            <option value="api" {% if settings.llm_transport == 'api' %}selected{% endif %}>api</option>
+            <option value="cli" {% if settings.llm_transport == 'cli' %}selected{% endif %}>cli</option>
+          </select>
+        </label>
+        <label class="field">
+          <span class="field__label">Provider</span>
+          <input class="input" name="llm_provider" value="{{ settings.llm_provider }}" />
+          <span class="field__help">Free-form label, e.g. generic, openai, ollama.</span>
+        </label>
+        <label class="field">
+          <span class="field__label">Model</span>
+          <input class="input mono" name="llm_model" value="{{ settings.llm_model }}" />
+        </label>
+        <label class="field field--wide">
+          <span class="field__label">Base URL</span>
+          <input class="input mono" name="llm_base_url" value="{{ settings.llm_base_url }}" />
+          <span class="field__help">OpenAI-compatible root, e.g. http://host.docker.internal:11434/v1 for Ollama.</span>
+        </label>
+        <label class="field">
+          <span class="field__label">API key
+            {% if settings.llm_api_key %}<span class="secret-flag secret-flag--set">set</span>{% else %}<span class="secret-flag secret-flag--unset">not set</span>{% endif %}
+          </span>
+          <input class="input mono" name="llm_api_key" value="" type="password" autocomplete="new-password" placeholder="{{ 'leave blank to keep' if settings.llm_api_key else 'not set' }}" />
+          <span class="field__help">Write-only; never displayed again.</span>
+        </label>
+        <label class="field field--wide">
+          <span class="field__label">Extra request JSON (advanced)</span>
+          <textarea class="textarea mono" name="llm_extra_request_json" rows="3" style="min-height:76px;" spellcheck="false" placeholder='{"enable_thinking": false}'>{{ settings.llm_extra_request_json or '' }}</textarea>
+          <span class="field__help">Merged into every chat-completions body, e.g. {"enable_thinking": false} for Qwen servers. Must be a JSON object; leave blank normally.</span>
+        </label>
+        <label class="field">
+          <span class="field__label">CLI backend</span>
+          <select class="select" name="cli_backend">
+            <option value="codex" {% if settings.cli_backend == 'codex' %}selected{% endif %}>codex</option>
+            <option value="claude" {% if settings.cli_backend == 'claude' %}selected{% endif %}>claude</option>
+            <option value="gemini" {% if settings.cli_backend == 'gemini' %}selected{% endif %}>gemini</option>
+            <option value="ollama" {% if settings.cli_backend == 'ollama' %}selected{% endif %}>ollama</option>
+          </select>
+          <span class="field__help">Only used when transport is cli.</span>
+        </label>
+        {{ num('cli_timeout_seconds', 'CLI timeout (s)', settings.cli_timeout_seconds, min=1) }}
+        {{ num('cli_max_retries', 'CLI max retries', settings.cli_max_retries, min=0) }}
+        {{ num('llm_timeout_seconds', 'LLM timeout (s)', settings.llm_timeout_seconds) }}
+        {{ num('llm_max_retries', 'LLM max retries', settings.llm_max_retries) }}
+      </div>
+    </section>
 
-  <section class="card card--padded">
-    <div class="card__header">
-      <h2 class="card__title card__title--lg">Scheduler</h2>
-    </div>
-    <div class="field-grid">
-      <label class="field">
-        <span class="field__label">Nightly hour (0–23)</span>
-        <input class="input tabular" type="number" min="0" max="23" name="nightly_hour" value="{{ settings.nightly_hour }}" />
-      </label>
-      <label class="field">
-        <span class="field__label">Nightly minute (0–59)</span>
-        <input class="input tabular" type="number" min="0" max="59" name="nightly_minute" value="{{ settings.nightly_minute }}" />
-      </label>
-    </div>
-  </section>
+    <!-- Input budgets -->
+    <section class="card card--pad settings__section" id="budgets" aria-labelledby="budgets-title">
+      <div class="card__head">
+        <div>
+          <h2 id="budgets-title">Input budgets</h2>
+          <p class="settings__section-sub">How much log text is packed into a single LLM call, and which keywords wake the prefilter.</p>
+        </div>
+      </div>
+      <div class="field-grid">
+        {{ num('max_input_chars', 'Max input chars', settings.max_input_chars, help='Hard cap on characters per chunk.') }}
+        {{ num('max_input_tokens', 'Max input tokens', settings.max_input_tokens, help='Estimated token cap per chunk.') }}
+        {{ num('reserved_output_tokens', 'Reserved output tokens', settings.reserved_output_tokens, help='Head-room left for the model reply.') }}
+        <label class="field">
+          <span class="field__label">Token strategy</span>
+          <select class="select" name="token_estimation_strategy">
+            <option value="chars" {% if settings.token_estimation_strategy == 'chars' %}selected{% endif %}>chars</option>
+            <option value="tiktoken" {% if settings.token_estimation_strategy == 'tiktoken' %}selected{% endif %}>tiktoken</option>
+          </select>
+          <span class="field__help">chars ≈ 4 chars/token; tiktoken is exact but slower.</span>
+        </label>
+        <label class="field field--wide">
+          <span class="field__label">Keyword list</span>
+          <input class="input mono" name="keyword_list" value="{{ settings.keyword_list }}" />
+          <span class="field__help">Comma-separated, case-insensitive. A log line must contain one of these to be sent to the LLM.</span>
+        </label>
+      </div>
+    </section>
 
-  <div class="row row--wrap" style="gap: 10px;">
-    <button class="btn btn--primary">Save settings</button>
-    <button type="button" id="btn-test-llm" class="btn">Test LLM</button>
-    <button type="button" id="btn-test-telegram" class="btn">Test Telegram</button>
-    <div id="settings-test-output" class="inline-output" style="flex: 1; min-width: 260px;"></div>
-  </div>
-</form>
+    <!-- Alerts & Telegram -->
+    <section class="card card--pad settings__section" id="alerts" aria-labelledby="alerts-title">
+      <div class="card__head">
+        <div>
+          <h2 id="alerts-title">Alerts &amp; Telegram</h2>
+          <p class="settings__section-sub">Where alerts go and which classifications are loud enough to send.</p>
+        </div>
+        {% if settings.telegram_token and settings.telegram_chat_id %}
+          <span class="badge badge--ok">connected</span>
+        {% else %}
+          <span class="badge badge--warning">not configured</span>
+        {% endif %}
+      </div>
+      <div class="field-grid">
+        <label class="field">
+          <span class="field__label">Telegram bot token
+            {% if settings.telegram_token %}<span class="secret-flag secret-flag--set">set</span>{% else %}<span class="secret-flag secret-flag--unset">not set</span>{% endif %}
+          </span>
+          <input class="input mono" name="telegram_token" value="" type="password" autocomplete="new-password" placeholder="{{ 'leave blank to keep' if settings.telegram_token else 'not set' }}" />
+          <span class="field__help">From @BotFather. Write-only.</span>
+        </label>
+        <label class="field">
+          <span class="field__label">Telegram chat id</span>
+          <input class="input mono" name="telegram_chat_id" value="{{ settings.telegram_chat_id or '' }}" />
+          <span class="field__help">Your user or group id; negative for groups.</span>
+        </label>
+        <label class="field">
+          <span class="field__label">Alert on classification ≥</span>
+          <select class="select" name="alert_min_classification">
+            {% for opt in ["critical", "warning", "noise"] %}
+            <option value="{{ opt }}" {% if settings.alert_min_classification == opt %}selected{% endif %}>{{ opt }}</option>
+            {% endfor %}
+          </select>
+          <span class="field__help">critical only is the quiet default.</span>
+        </label>
+        {{ num('alert_cooldown_minutes', 'Alert cooldown (min)', settings.alert_cooldown_minutes, help='Suppress repeat alerts for the same container.') }}
+        {{ num('restart_alert_count', 'Restart-storm: exits', settings.restart_alert_count, min=1, help='Alert after this many exits…') }}
+        {{ num('restart_alert_window_minutes', 'Restart-storm window (min)', settings.restart_alert_window_minutes, min=1, help='…within this window.') }}
+        {{ num('event_retention_days', 'Keep skipped/noise events (days)', settings.event_retention_days, min=1, help='Older skipped/noise rows are pruned.') }}
+      </div>
+    </section>
+
+    <!-- Rate limits -->
+    <section class="card card--pad settings__section" id="limits" aria-labelledby="limits-title">
+      <div class="card__head">
+        <div>
+          <h2 id="limits-title">Rate limits &amp; batching</h2>
+          <p class="settings__section-sub">Guard-rails that keep a noisy container from flooding the LLM or your phone.</p>
+        </div>
+      </div>
+      <div class="field-grid">
+        {{ num('alert_rate_limit_count', 'Alert rate-limit count', settings.alert_rate_limit_count, help='Max alerts…') }}
+        {{ num('alert_rate_limit_window_seconds', 'Alert rate window (s)', settings.alert_rate_limit_window_seconds, help='…per window, globally.') }}
+        {{ num('dedup_window_seconds', 'Dedup window (s)', settings.dedup_window_seconds, min=0, help='Identical chunks within the window are skipped.') }}
+        {{ num('container_rate_limit_count', 'Container rate count', settings.container_rate_limit_count, min=1, help='Max LLM calls per container…') }}
+        {{ num('container_rate_limit_window_seconds', 'Container rate window (s)', settings.container_rate_limit_window_seconds, min=60, help='…per window (min 60 s).') }}
+        {{ num('keyword_flush_delay_lines', 'Keyword flush delay (lines)', settings.keyword_flush_delay_lines, min=0, help='Lines to keep collecting after a keyword hit before flushing.') }}
+        {{ num('chunk_coalesce_window_seconds', 'Coalesce window (s)', settings.chunk_coalesce_window_seconds, min=0, help='Hold matched chunks per container and merge them; 0 disables.') }}
+      </div>
+    </section>
+
+    <!-- Scheduler -->
+    <section class="card card--pad settings__section" id="scheduler" aria-labelledby="scheduler-title">
+      <div class="card__head">
+        <div>
+          <h2 id="scheduler-title">Scheduler</h2>
+          <p class="settings__section-sub">When the nightly report is generated (server local time).</p>
+        </div>
+      </div>
+      <div class="field-grid">
+        {{ num('nightly_hour', 'Nightly hour (0–23)', settings.nightly_hour, min=0, max=23) }}
+        {{ num('nightly_minute', 'Nightly minute (0–59)', settings.nightly_minute, min=0, max=59) }}
+      </div>
+    </section>
+
+    <div class="settings__actions">
+      <button class="btn btn--primary">Save settings</button>
+      <button type="button" id="btn-test-llm" class="btn">Test LLM</button>
+      <button type="button" id="btn-test-telegram" class="btn">Test Telegram</button>
+      <div id="settings-test-output" class="inline-output" role="status" aria-live="polite"></div>
+    </div>
+  </form>
+</div>
 {% endblock %}

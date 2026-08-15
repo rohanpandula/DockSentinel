@@ -87,6 +87,7 @@ function attachTestButton(buttonId, endpoint, labels) {
       const result = await postJSON(endpoint);
       if (result.ok) {
         setOutputState(output, "ok", labels.ok);
+        toast(labels.ok, "ok");
       } else {
         const reason = (result.data && result.data.error) || "unknown error";
         setOutputState(output, "error", `${labels.fail} — ${reason}`);
@@ -268,7 +269,98 @@ function wireTryLLM() {
   });
 }
 
+
+/* ── Shell: theme, drawer, toasts, section nav ───────────────────────── */
+const THEME_KEY = "ds-theme";
+
+function applyTheme(theme) {
+  const root = document.documentElement;
+  if (theme === "light" || theme === "dark") root.setAttribute("data-theme", theme);
+  else root.removeAttribute("data-theme");
+}
+
+function wireThemeToggle() {
+  const btn = document.querySelector("[data-theme-toggle]");
+  if (!btn) return;
+  btn.addEventListener("click", () => {
+    let current = null;
+    try { current = localStorage.getItem(THEME_KEY); } catch (_e) { /* private mode */ }
+    // auto → light → dark → auto
+    const next = current === "light" ? "dark" : current === "dark" ? null : "light";
+    try {
+      if (next) localStorage.setItem(THEME_KEY, next);
+      else localStorage.removeItem(THEME_KEY);
+    } catch (_e) { /* ignore */ }
+    applyTheme(next);
+  });
+}
+
+function wireNavDrawer() {
+  const shell = document.getElementById("shell");
+  const toggle = document.querySelector("[data-nav-toggle]");
+  if (!shell || !toggle) return;
+  const closers = document.querySelectorAll("[data-nav-close]");
+  const setOpen = (open) => {
+    shell.classList.toggle("nav-open", open);
+    toggle.setAttribute("aria-expanded", String(open));
+    document.body.style.overflow = open ? "hidden" : "";
+    if (open) {
+      const first = shell.querySelector(".sidebar .nav__link");
+      if (first) first.focus({ preventScroll: true });
+    } else {
+      toggle.focus({ preventScroll: true });
+    }
+  };
+  toggle.addEventListener("click", () => setOpen(!shell.classList.contains("nav-open")));
+  closers.forEach((el) => {
+    el.hidden = false;
+    el.addEventListener("click", () => setOpen(false));
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && shell.classList.contains("nav-open")) setOpen(false);
+  });
+  const mq = window.matchMedia("(min-width: 901px)");
+  mq.addEventListener("change", () => { if (mq.matches) setOpen(false); });
+}
+
+function toast(message, kind = "info", ttl = 4000) {
+  const region = document.querySelector("[data-toasts]");
+  if (!region) return;
+  const el = document.createElement("div");
+  el.className = `toast toast--${kind}`;
+  el.setAttribute("role", "status");
+  el.textContent = message;
+  region.appendChild(el);
+  setTimeout(() => el.remove(), ttl);
+}
+window.dsToast = toast;
+
+function wireSectionNav() {
+  const nav = document.querySelector("[data-section-nav]");
+  if (!nav || !("IntersectionObserver" in window)) return;
+  const links = [...nav.querySelectorAll('a[href^="#"]')];
+  const sections = links
+    .map((a) => document.getElementById(a.getAttribute("href").slice(1)))
+    .filter(Boolean);
+  if (!sections.length) return;
+  const setActive = (id) => links.forEach((a) => a.classList.toggle("is-active", a.getAttribute("href") === `#${id}`));
+  const io = new IntersectionObserver((entries) => {
+    const visible = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+    if (visible.length) setActive(visible[0].target.id);
+  }, { rootMargin: "-10% 0px -70% 0px", threshold: 0 });
+  sections.forEach((s) => io.observe(s));
+  setActive(sections[0].id);
+  // Deep links from the Overview checklist (#llm, #alerts) should highlight too.
+  if (location.hash) {
+    const target = document.getElementById(location.hash.slice(1));
+    if (target) setActive(target.id);
+  }
+}
+
 window.addEventListener("DOMContentLoaded", () => {
+  wireThemeToggle();
+  wireNavDrawer();
+  wireSectionNav();
   wireAnalyzeForm();
   wireTryLLM();
   attachTestButton("btn-test-llm", "/api/settings/test-llm", {

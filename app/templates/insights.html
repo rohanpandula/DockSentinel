@@ -1,98 +1,139 @@
 {% extends "base.html" %}
 {% block title %}DockSentinel — Events{% endblock %}
 {% block content %}
-<div class="page-header">
+{% set has_filter = filters.container or filters.classification or filters.status or filters.start %}
+<div class="page-head">
   <div>
-    <h1 class="page-title">Events</h1>
-    <p class="page-subtitle">Searchable archive of every classified event, with root-cause hypothesis and fix suggestion.</p>
+    <h1 class="page-head__title">Events</h1>
+    <p class="page-head__sub">Every classified log chunk with its root-cause hypothesis and fix suggestion. Expand a row for details.</p>
+  </div>
+  <div class="page-head__actions">
+    <span class="text-tertiary text-sm">{{ events|length }} shown{% if events|length >= 200 %} (capped){% endif %}</span>
   </div>
 </div>
 
-<section class="card card--padded">
-  <form method="get">
-    <div class="field-grid" style="grid-template-columns: repeat(5, 1fr);">
-      <label class="field">
-        <span class="field__label">Container</span>
-        <input class="input mono" name="container" list="container-list" placeholder="any" value="{{ filters.container }}" />
-        <datalist id="container-list">
-          {% for c in containers %}<option value="{{ c }}"></option>{% endfor %}
-        </datalist>
-      </label>
-      <label class="field">
-        <span class="field__label">Severity</span>
-        <select class="select" name="classification">
-          <option value="">all</option>
-          {% for c in ['critical', 'warning', 'noise'] %}
-            <option value="{{ c }}" {% if filters.classification == c %}selected{% endif %}>{{ c }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <label class="field">
-        <span class="field__label">Status</span>
-        <select class="select" name="status">
-          <option value="">all</option>
-          {% for s in statuses %}
-            <option value="{{ s }}" {% if filters.status == s %}selected{% endif %}>{{ s }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <label class="field">
-        <span class="field__label">Since</span>
-        <input class="input tabular" name="start" type="datetime-local" value="{{ filters.start }}" />
-      </label>
-      <label class="field" style="justify-content: flex-end;">
-        <span class="field__label">&nbsp;</span>
-        <button class="btn btn--primary">Filter</button>
-      </label>
-    </div>
-  </form>
-</section>
+<form method="get" class="card toolbar" role="search" aria-label="Filter events">
+  <label class="field">
+    <span class="field__label">Container</span>
+    <input class="input mono" name="container" list="container-list" placeholder="any" value="{{ filters.container }}" />
+    <datalist id="container-list">
+      {% for c in containers %}<option value="{{ c }}"></option>{% endfor %}
+    </datalist>
+  </label>
+  <label class="field">
+    <span class="field__label">Severity</span>
+    <select class="select" name="classification">
+      <option value="">all</option>
+      {% for c in ['critical', 'warning', 'noise'] %}
+        <option value="{{ c }}" {% if filters.classification == c %}selected{% endif %}>{{ c }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label class="field">
+    <span class="field__label">Status</span>
+    <select class="select" name="status">
+      <option value="">all</option>
+      {% for s in statuses %}
+        <option value="{{ s }}" {% if filters.status == s %}selected{% endif %}>{{ s }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label class="field">
+    <span class="field__label">Since</span>
+    <input class="input tabular" name="start" type="datetime-local" value="{{ filters.start }}" />
+  </label>
+  <div class="toolbar__actions">
+    <button class="btn btn--primary"><svg aria-hidden="true"><use href="#ico-search"/></svg>Filter</button>
+    {% if has_filter %}<a class="btn btn--ghost" href="{{ url_for('insights_page') }}">Clear</a>{% endif %}
+  </div>
+</form>
 
-<div class="stack mt-lg">
-  {% for e in events %}
-    <details class="disclosure">
-      <summary class="disclosure__summary">
-        <span class="table__time">{{ e.created_at }}</span>
-        <span class="table__container">{{ e.container_name }}</span>
-        {% if e.classification == 'critical' %}
-          <span class="badge badge--critical">critical</span>
-        {% elif e.classification == 'warning' %}
-          <span class="badge badge--warning">warning</span>
-        {% else %}
-          <span class="badge badge--noise">{{ e.classification or 'noise' }}</span>
-        {% endif %}
-        <span class="text-secondary" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ e.summary or e.status }}</span>
-        {% if e.alert_sent %}
-          <span class="badge badge--ok badge--no-dot" title="Telegram alert sent">alerted</span>
-        {% elif e.alert_error %}
-          <span class="badge badge--neutral badge--no-dot" title="{{ e.alert_error }}">not alerted</span>
-        {% endif %}
-        {% if issue_by_event.get(e.id) %}
-          <a class="badge badge--warning badge--no-dot" href="{{ url_for('issues_page', id=issue_by_event[e.id]) }}">issue #{{ issue_by_event[e.id] }}</a>
-        {% endif %}
-      </summary>
-      <div class="disclosure__body">
-        <p><strong>Status</strong> — {{ e.status }}{% if e.llm_error %} · <span class="text-mono">{{ e.llm_error }}</span>{% endif %}{% if e.parse_error %} · <span class="text-mono">{{ e.parse_error }}</span>{% endif %}</p>
-        {% if e.alert_error %}
-          <p><strong>Alert</strong> — <span class="text-secondary">{{ e.alert_error }}</span></p>
-        {% endif %}
-        {% if issue_by_event.get(e.id) %}
-          <p><strong>Issue</strong> — <a href="{{ url_for('issues_page', id=issue_by_event[e.id]) }}">#{{ issue_by_event[e.id] }}</a></p>
-        {% endif %}
-        <p><strong>Root cause</strong> — {{ e.root_cause_hypothesis or '—' }}</p>
-        <p><strong>Fix suggestion</strong> — {{ e.fix_suggestion or '—' }}</p>
-        <p><strong>Confidence</strong> — <span class="tabular">{{ e.confidence if e.confidence is not none else '—' }}</span></p>
-        <pre class="code-block">{{ e.chunk_excerpt or '—' }}</pre>
-      </div>
-    </details>
-  {% else %}
-    <div class="card">
-      <div class="empty">
-        <div class="empty__icon">∅</div>
-        <p class="empty__title">No events match this filter</p>
-        <p>Try widening the time window or clearing the severity/status filter. <a href="{{ url_for('insights_page') }}">Clear filters</a></p>
-      </div>
+<div class="mt-4">
+  {% if events %}
+  <div class="event-list">
+    <div class="list-head" aria-hidden="true">
+      <span></span><span>Time</span><span>Container</span><span>Severity</span><span>Summary</span><span></span>
     </div>
-  {% endfor %}
+    {% for e in events %}
+      <details class="disclosure">
+        <summary class="disclosure__summary">
+          <svg class="disclosure__caret" aria-hidden="true"><use href="#ico-chevron"/></svg>
+          <span class="table__time">{{ e.created_at }}</span>
+          <span class="table__container truncate" title="{{ e.container_name }}">{{ e.container_name }}</span>
+          {% if e.classification == 'critical' %}
+            <span class="badge badge--critical">critical</span>
+          {% elif e.classification == 'warning' %}
+            <span class="badge badge--warning">warning</span>
+          {% else %}
+            <span class="badge badge--noise">{{ e.classification or 'noise' }}</span>
+          {% endif %}
+          <span class="disclosure__text">{{ e.summary or e.status }}</span>
+          <span class="disclosure__flags">
+            {% if e.status != 'analyzed' %}
+              <span class="badge badge--neutral badge--no-dot" title="Pipeline status">{{ e.status }}</span>
+            {% endif %}
+            {% if e.alert_sent %}
+              <span class="badge badge--ok badge--no-dot" title="Telegram alert sent">alerted</span>
+            {% elif e.alert_error %}
+              <span class="badge badge--neutral badge--no-dot" title="{{ e.alert_error }}">not alerted</span>
+            {% endif %}
+            {% if issue_by_event.get(e.id) %}
+              <a class="badge badge--warning badge--no-dot" href="{{ url_for('issues_page', id=issue_by_event[e.id]) }}">issue #{{ issue_by_event[e.id] }}</a>
+            {% endif %}
+          </span>
+        </summary>
+        <div class="disclosure__body">
+          <dl class="disclosure__grid">
+            <div>
+              <dt>Status</dt>
+              <dd>{{ e.status }}{% if e.llm_error %} · <span class="text-mono text-critical">{{ e.llm_error }}</span>{% endif %}{% if e.parse_error %} · <span class="text-mono text-critical">{{ e.parse_error }}</span>{% endif %}</dd>
+            </div>
+            <div>
+              <dt>Alert</dt>
+              <dd>{% if e.alert_sent %}<span class="text-ok">sent to Telegram</span>{% elif e.alert_error %}<span class="text-secondary">{{ e.alert_error }}</span>{% else %}—{% endif %}</dd>
+            </div>
+            <div>
+              <dt>Confidence</dt>
+              <dd class="tabular">{{ e.confidence if e.confidence is not none else '—' }}</dd>
+            </div>
+            <div>
+              <dt>Issue</dt>
+              <dd>{% if issue_by_event.get(e.id) %}<a href="{{ url_for('issues_page', id=issue_by_event[e.id]) }}">#{{ issue_by_event[e.id] }}</a>{% else %}—{% endif %}</dd>
+            </div>
+            <div>
+              <dt>Model</dt>
+              <dd class="text-mono">{{ e.model or '—' }}</dd>
+            </div>
+          </dl>
+          <dl class="disclosure__grid" style="grid-template-columns: 1fr;">
+            <div>
+              <dt>Root cause</dt>
+              <dd>{{ e.root_cause_hypothesis or '—' }}</dd>
+            </div>
+            <div>
+              <dt>Fix suggestion</dt>
+              <dd>{{ e.fix_suggestion or '—' }}</dd>
+            </div>
+          </dl>
+          <div class="eyebrow mb-2">Log excerpt</div>
+          <pre class="code-block">{{ e.chunk_excerpt or '—' }}</pre>
+        </div>
+      </details>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="card">
+    <div class="empty">
+      <div class="empty__icon"><svg aria-hidden="true"><use href="#ico-search"/></svg></div>
+      <p class="empty__title">{% if has_filter %}No events match this filter{% else %}No events yet{% endif %}</p>
+      <p>{% if has_filter %}Try widening the time window or clearing the severity/status filter.{% else %}Start the sentinel from the Overview and events will appear here as logs are triaged.{% endif %}</p>
+      {% if has_filter %}
+        <a class="btn" href="{{ url_for('insights_page') }}">Clear filters</a>
+      {% else %}
+        <a class="btn btn--primary" href="{{ url_for('dashboard') }}">Go to Overview</a>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
 </div>
 {% endblock %}

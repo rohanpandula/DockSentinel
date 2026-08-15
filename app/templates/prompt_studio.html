@@ -1,40 +1,54 @@
 {% extends "base.html" %}
 {% block title %}DockSentinel — Prompts{% endblock %}
 {% block content %}
-<div class="page-header">
+<div class="page-head">
   <div>
-    <h1 class="page-title">Prompts</h1>
-    <p class="page-subtitle">Versioned prompt templates used by the triage pipeline. Edits take effect on the next LLM call.</p>
+    <h1 class="page-head__title">Prompts</h1>
+    <p class="page-head__sub">Versioned prompt templates used by the triage pipeline and the nightly report. Edits apply on the next LLM call.</p>
   </div>
+  <form method="get" class="page-head__actions" aria-label="Choose prompt">
+    <label class="field" style="min-width: 260px;">
+      <span class="sr-only">Prompt key</span>
+      <select class="select mono" name="key" onchange="this.form.submit()" aria-label="Prompt key">
+        {% for prompt in prompts %}
+          <option value="{{ prompt.key }}" {% if selected_prompt and prompt.key == selected_prompt.key %}selected{% endif %}>{{ prompt.key }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <noscript><button class="btn">Open</button></noscript>
+  </form>
 </div>
 
-<section class="card card--padded">
-  <form method="get" class="field" style="max-width: 360px; margin-bottom: 18px;">
-    <span class="field__label">Prompt key</span>
-    <select class="select mono" name="key" onchange="this.form.submit()">
-      {% for prompt in prompts %}
-        <option value="{{ prompt.key }}" {% if selected_prompt and prompt.key == selected_prompt.key %}selected{% endif %}>{{ prompt.key }}</option>
-      {% endfor %}
-    </select>
-  </form>
-
+<section class="card card--pad" aria-label="Prompt editor">
   {% if selected_prompt %}
     <form method="post" class="stack">
       <input type="hidden" name="key" value="{{ selected_prompt.key }}" />
-      <div class="row row--wrap text-mono text-tertiary" style="gap: 16px;">
-        <span>version <span class="tabular" style="color: var(--fg-secondary);">{{ selected_prompt.version }}</span></span>
-        <span>default <span style="color: var(--fg-secondary);">{{ 'yes' if selected_prompt.is_default else 'no' }}</span></span>
+      <div class="card__head">
+        <div>
+          <h2 class="card__title text-mono">{{ selected_prompt.key }}</h2>
+          <p class="text-tertiary text-sm mt-1">Version <span class="tabular text-secondary">{{ selected_prompt.version }}</span></p>
+        </div>
+        {% if selected_prompt.is_default %}
+          <span class="badge badge--neutral badge--no-dot">default</span>
+        {% else %}
+          <span class="badge badge--accent badge--no-dot">customised</span>
+        {% endif %}
       </div>
-      <textarea class="textarea" name="content" rows="18">{{ selected_prompt.content }}</textarea>
-      <div class="row" style="gap: 10px;">
+      <label class="field">
+        <span class="sr-only">Prompt content</span>
+        <textarea class="textarea mono" name="content" rows="18" spellcheck="false" style="min-height: 360px; font-size: 12.5px;">{{ selected_prompt.content }}</textarea>
+        <span class="field__help">Saving bumps the version. “Restore default” replaces the content with the built-in template.</span>
+      </label>
+      <div class="btn-row">
         <button class="btn btn--primary" name="action" value="save">Save</button>
-        <button class="btn" name="action" value="reset">Restore default</button>
+        <button class="btn" name="action" value="reset" {% if selected_prompt.is_default %}disabled{% endif %}>Restore default</button>
       </div>
     </form>
   {% else %}
     <div class="empty">
-      <div class="empty__icon">◦</div>
+      <div class="empty__icon"><svg aria-hidden="true"><use href="#ico-prompt"/></svg></div>
       <p class="empty__title">Pick a prompt to edit</p>
+      <p>Choose a prompt key from the selector above.</p>
     </div>
   {% endif %}
 </section>

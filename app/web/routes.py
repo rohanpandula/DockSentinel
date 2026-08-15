@@ -66,6 +66,7 @@ def dashboard():
         active_containers=container.coordinator.active_container_ids(),
         known_containers=_list_running_containers(),
         analyze_error=request.args.get("analyze_error"),
+        settings=container.settings_repo.get(),
     )
 
 
