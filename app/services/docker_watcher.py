@@ -44,6 +44,10 @@ class DockerWatcher:
         self._reconcile_thread: threading.Thread | None = None
 
     def start(self) -> None:
+        # Idempotent restart: tear down any previous generation first so a
+        # start() without a matching stop() cannot leak the old threads.
+        if self._event_thread is not None or self._reconcile_thread is not None or self._client is not None:
+            self.stop()
         # Fresh events per generation: a previous generation's reconcile loop
         # (which may still be blocked in wait()) keeps its own stop event set,
         # so it cannot be revived by this start().
