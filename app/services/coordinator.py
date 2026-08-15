@@ -175,9 +175,17 @@ class RuntimeCoordinator:
 
         return False
 
+    def _flush_idle_buffers_once(self) -> None:
+        try:
+            with self.app.app_context():
+                self.sentinel_service.flush_idle_buffers()
+        except Exception:
+            LOGGER.warning("idle buffer flush failed", exc_info=True)
+
     def _health_check_loop(self) -> None:
         while not self._health_stop_event.wait(self._health_check_interval_seconds):
             self._check_watcher_health_once()
+            self._flush_idle_buffers_once()
 
     def _start_health_monitor(self) -> None:
         if self._health_thread is not None and self._health_thread.is_alive():

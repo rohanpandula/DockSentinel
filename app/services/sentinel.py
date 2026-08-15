@@ -163,9 +163,33 @@ class SentinelService:
             return
 
         matches = self._prefilter().match(line)
-        chunks = self.log_buffer.add_line(container_id=container_id, line=line, keyword_hit=bool(matches))
+        chunks = self.log_buffer.add_line(
+            container_id=container_id,
+            line=line,
+            keyword_hit=bool(matches),
+            container_name=container_name,
+        )
         for chunk in chunks:
             self.process_chunk(container_id=container_id, container_name=container_name, chunk_text=chunk.text)
+
+    def flush_idle_buffers(self) -> int:
+        """Flush buffers that went quiet after a keyword hit and analyze them.
+
+        Called periodically (health-monitor tick) so an error followed by
+        silence does not sit in the buffer until the next log line arrives.
+        Returns the number of chunks processed.
+        """
+        if not self.is_enabled():
+            return 0
+        chunks = self.log_buffer.flush_idle()
+        processed = 0
+        for chunk in chunks:
+            container_name = chunk.container_name or chunk.container_id
+            if self.is_excluded_container(container_name):
+                continue
+            self.process_chunk(container_id=chunk.container_id, container_name=container_name, chunk_text=chunk.text)
+            processed += 1
+        return processed
 
     def process_chunk(
         self,
