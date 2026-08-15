@@ -16,6 +16,19 @@
   </div>
 </div>
 
+{% if not state.enabled %}
+<div class="card card--padded" style="border-color: var(--warning); margin-bottom: 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+  <div style="flex: 1; min-width: 240px;">
+    <strong>Sentinel is stopped.</strong>
+    <span class="text-secondary">No containers are being watched and no alerts will fire. Configure your LLM and Telegram in <a href="{{ url_for('settings_page') }}">Settings</a>, then start it here.</span>
+  </div>
+  <form method="post" action="{{ url_for('sentinel_toggle_from_ui') }}">
+    <input type="hidden" name="enabled" value="true" />
+    <button class="btn btn--primary btn--sm">Start sentinel</button>
+  </form>
+</div>
+{% endif %}
+
 <div class="grid-dashboard">
   <section class="card card--padded">
     <div class="card__header">
@@ -83,8 +96,14 @@
         <dd><span class="tabular" style="color: var(--critical);">{{ counts.critical }}</span></dd>
         <dt>Warning</dt>
         <dd><span class="tabular" style="color: var(--warning);">{{ counts.warning }}</span></dd>
-        <dt>Noise</dt>
+        <dt title="LLM analysed the chunk and classified it as noise">Noise (LLM)</dt>
         <dd><span class="tabular text-tertiary">{{ counts.noise }}</span></dd>
+        <dt title="Never sent to the LLM: prefilter, dedup, rate limit, coalescing or exclusion">Skipped (prefilter)</dt>
+        <dd><span class="tabular text-tertiary">{{ counts.skipped }}</span></dd>
+        {% if counts.errors %}
+        <dt title="LLM or parse errors">Errors</dt>
+        <dd><span class="tabular" style="color: var(--warning);">{{ counts.errors }}</span></dd>
+        {% endif %}
       </dl>
       <form method="post" action="{{ url_for('reports_generate') }}" class="mt-md">
         <button class="btn btn--ghost" style="width: 100%;">Generate nightly report</button>

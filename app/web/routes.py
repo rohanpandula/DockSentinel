@@ -3,15 +3,30 @@ from __future__ import annotations
 from datetime import datetime
 
 from flask import Blueprint, current_app, redirect, render_template, request, url_for
+from markupsafe import Markup
 
 from pydantic import ValidationError
 
 from app.extensions import db
-from app.models import ExclusionRule, PromptKey, SentinelState
+from app.models import ExclusionRule, LocalIssue, PromptKey, SentinelState
 from app.schemas.settings import ALLOWED_SETTINGS_FIELDS, MASK, SECRET_FIELDS, UpdateSettingsBody
 from app.time_utils import utcnow_naive
+from app.web.markdown_lite import render_markdown
 
 bp = Blueprint("web", __name__, url_prefix="")
+
+# Every value AnalysisEvent.status can take (see services/sentinel.py).
+EVENT_STATUSES: tuple[str, ...] = (
+    "analyzed",
+    "skipped",
+    "dedup_skipped",
+    "rate_limited",
+    "queued",
+    "parse_error",
+    "llm_error",
+    "excluded",
+    "container_event",
+)
 
 
 @bp.route("/", endpoint="index")
@@ -26,10 +41,17 @@ def dashboard():
     today_start = utcnow_naive().replace(hour=0, minute=0, second=0, microsecond=0)
     today_events = container.event_repo.get_today(today_start)
 
-    counts = {"critical": 0, "warning": 0, "noise": 0}
+    # "noise" = the LLM looked and said noise; "skipped" = never reached the LLM
+    # (prefilter / dedup / rate limit / coalesce queue / exclusion).
+    counts = {"critical": 0, "warning": 0, "noise": 0, "skipped": 0, "errors": 0}
     for event in today_events:
-        if event.classification in counts:
-            counts[event.classification] += 1
+        if event.status == "analyzed":
+            if event.classification in counts:
+                counts[event.classification] += 1
+        elif event.status in {"parse_error", "llm_error"}:
+            counts["errors"] += 1
+        else:
+            counts["skipped"] += 1
 
     events = container.event_repo.get_recent(limit=10)
     latest_report = container.report_repo.get_latest()
@@ -118,8 +140,11 @@ def exclusions_delete(rule_id: int):
 @bp.route("/insights", endpoint="insights_page")
 def insights_page():
     svc = current_app.extensions["services"]
-    container_filter = request.args.get("container")
-    classification = request.args.get("classification")
+    container_filter = request.args.get("container") or None
+    classification = request.args.get("classification") or None
+    status = request.args.get("status") or None
+    if status not in EVENT_STATUSES:
+        status = None
     start_str = request.args.get("start")
     end_str = request.args.get("end")
 
@@ -143,8 +168,39 @@ def insights_page():
         end=end,
         limit=200,
     )
+    if status:
+        # Filter in Python: keeps the repository signature untouched and the
+        # page caps at 200 rows anyway.
+        events = [e for e in events if e.status == status]
     containers = svc.event_repo.get_distinct_container_names()
-    return render_template("insights.html", events=events, containers=containers)
+
+    # Map event id -> issue id so rows can link to the issue raised from them.
+    event_ids = [e.id for e in events if e.id is not None]
+    issue_by_event: dict[int, int] = {}
+    if event_ids:
+        rows = (
+            db.session.query(LocalIssue.event_id, LocalIssue.id)
+            .filter(LocalIssue.event_id.in_(event_ids))
+            .order_by(LocalIssue.created_at.asc())
+            .all()
+        )
+        for event_id, issue_id in rows:
+            issue_by_event.setdefault(event_id, issue_id)
+
+    return render_template(
+        "insights.html",
+        events=events,
+        containers=containers,
+        statuses=EVENT_STATUSES,
+        issue_by_event=issue_by_event,
+        filters={
+            "container": container_filter or "",
+            "classification": classification or "",
+            "status": status or "",
+            "start": start_str or "",
+            "end": end_str or "",
+        },
+    )
 
 
 @bp.route("/reports", endpoint="reports_page")
@@ -153,7 +209,9 @@ def reports_page():
     reports = container.report_repo.list_all()
     selected_id = request.args.get("id", type=int)
     selected = container.report_repo.get(selected_id) if selected_id else (reports[0] if reports else None)
-    return render_template("reports.html", reports=reports, selected_report=selected)
+    # render_markdown escapes all source text before adding tags, so it is safe to mark.
+    report_html = Markup(render_markdown(selected.markdown_content)) if selected else Markup("")
+    return render_template("reports.html", reports=reports, selected_report=selected, report_html=report_html)
 
 
 @bp.route("/reports/generate", methods=["POST"], endpoint="reports_generate")

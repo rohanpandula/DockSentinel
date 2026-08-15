@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 from typing import Any, Optional, Protocol, TYPE_CHECKING
+from urllib.parse import quote
 
 from app.config_objects import AlertConfig
 from app.services.telegram import TelegramNotifier
@@ -89,11 +90,19 @@ class AlertService:
             lines.append("")
             lines.append("SUGGESTED FIX (model-generated — verify before running)")
             lines.append(event.fix_suggestion)
+        excerpt_lines = [ln.strip() for ln in (event.chunk_excerpt or "").splitlines() if ln.strip()]
+        if excerpt_lines:
+            lines.append("")
+            lines.append("LOG EXCERPT")
+            for ln in excerpt_lines[-5:]:
+                lines.append(ln if len(ln) <= 160 else ln[:157] + "...")
         lines.append("")
         if confidence is not None:
             lines.append(f"Confidence: {confidence:.2f}")
         if event.id is not None:
             lines.append(f"Event ID: {event.id}")
+        if event.container_name:
+            lines.append(f"Dashboard: /insights?container={quote(event.container_name, safe='')}")
         return "\n".join(lines)
 
     @staticmethod
