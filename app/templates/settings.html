@@ -117,8 +117,28 @@
         <input class="input mono" name="telegram_chat_id" value="{{ settings.telegram_chat_id or '' }}" />
       </label>
       <label class="field">
+        <span class="field__label">Alert on classification ≥</span>
+        <select class="input" name="alert_min_classification">
+          {% for opt in ["critical", "warning", "noise"] %}
+          <option value="{{ opt }}" {% if settings.alert_min_classification == opt %}selected{% endif %}>{{ opt }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="field">
         <span class="field__label">Alert cooldown (min)</span>
         <input class="input tabular" type="number" name="alert_cooldown_minutes" value="{{ settings.alert_cooldown_minutes }}" />
+      </label>
+      <label class="field">
+        <span class="field__label">Restart-storm: exits</span>
+        <input class="input tabular" type="number" min="1" name="restart_alert_count" value="{{ settings.restart_alert_count }}" />
+      </label>
+      <label class="field">
+        <span class="field__label">Restart-storm window (min)</span>
+        <input class="input tabular" type="number" min="1" name="restart_alert_window_minutes" value="{{ settings.restart_alert_window_minutes }}" />
+      </label>
+      <label class="field">
+        <span class="field__label">Keep skipped/noise events (days)</span>
+        <input class="input tabular" type="number" min="1" name="event_retention_days" value="{{ settings.event_retention_days }}" />
       </label>
       <label class="field">
         <span class="field__label">Alert rate-limit count</span>

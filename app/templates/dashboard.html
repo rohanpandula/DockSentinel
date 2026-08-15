@@ -16,6 +16,12 @@
   </div>
 </div>
 
+{% if analyze_error %}
+<div class="card card--padded" style="border-color: var(--critical, #c0392b); margin-bottom: 16px;">
+  <strong>Analyze failed:</strong> <span class="text-secondary">{{ analyze_error }}</span>
+</div>
+{% endif %}
+
 {% if not state.enabled %}
 <div class="card card--padded" style="border-color: var(--warning); margin-bottom: 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
   <div style="flex: 1; min-width: 240px;">
