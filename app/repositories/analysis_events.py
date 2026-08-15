@@ -64,6 +64,32 @@ class AnalysisEventRepository:
             .first()
         )
 
+    def count_container_events(self, container_id: str, statuses: list[str], since: datetime) -> int:
+        """Count container lifecycle events (status="container_event") for one
+        container whose docker status (die/oom/...) is in `statuses`."""
+        return AnalysisEvent.query.filter(
+            and_(
+                AnalysisEvent.container_id == container_id,
+                AnalysisEvent.status == "container_event",
+                AnalysisEvent.matched_keywords.in_(statuses),
+                AnalysisEvent.created_at >= since,
+            )
+        ).count()
+
+    def find_recent_storm_alert(self, container_id: str, since: datetime) -> AnalysisEvent | None:
+        return (
+            AnalysisEvent.query.filter(
+                and_(
+                    AnalysisEvent.container_id == container_id,
+                    AnalysisEvent.status == "container_event",
+                    AnalysisEvent.alert_sent.is_(True),
+                    AnalysisEvent.created_at >= since,
+                )
+            )
+            .order_by(AnalysisEvent.created_at.desc())
+            .first()
+        )
+
     def get_for_window(self, since: datetime) -> list[AnalysisEvent]:
         return (
             AnalysisEvent.query.filter(AnalysisEvent.created_at >= since)

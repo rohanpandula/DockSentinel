@@ -50,6 +50,10 @@ class Settings(db.Model):
     # --- Coalescing (batch chunks per container before LLM call) ---
     chunk_coalesce_window_seconds = db.Column(db.Integer, nullable=False, default=0)
 
+    # --- Restart-storm alerting (container die/oom events) ---
+    restart_alert_count = db.Column(db.Integer, nullable=False, default=3)
+    restart_alert_window_minutes = db.Column(db.Integer, nullable=False, default=10)
+
     updated_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive, onupdate=utcnow_naive)
 
     @classmethod
@@ -90,5 +94,7 @@ class Settings(db.Model):
             "container_rate_limit_window_seconds": self.container_rate_limit_window_seconds,
             "keyword_flush_delay_lines": self.keyword_flush_delay_lines,
             "chunk_coalesce_window_seconds": self.chunk_coalesce_window_seconds,
+            "restart_alert_count": self.restart_alert_count,
+            "restart_alert_window_minutes": self.restart_alert_window_minutes,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

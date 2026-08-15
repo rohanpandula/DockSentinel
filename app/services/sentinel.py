@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from datetime import timedelta
 from typing import Any, TYPE_CHECKING
 
@@ -141,6 +142,93 @@ class SentinelService:
         )
         self.event_repo.add(event)
         db.session.commit()
+
+    # --- Container lifecycle events (die / oom / restart / unhealthy) ---
+
+    STORM_STATUSES = ("die", "oom")
+
+    @staticmethod
+    def classify_container_event(status: str, attrs: dict[str, Any]) -> tuple[str, str]:
+        """Return (classification, summary_suffix) for a docker lifecycle event."""
+        exit_code = attrs.get("exitCode")
+        if status == "oom":
+            return "critical", "was OOM killed"
+        if status == "health_status: unhealthy":
+            return "critical", "became unhealthy"
+        if status == "die":
+            if exit_code in (None, 0):
+                return "noise", "exited with code 0"
+            hint = ""
+            if exit_code == 137:
+                hint = " (OOM killed / SIGKILL)"
+            elif exit_code == 143:
+                hint = " (SIGTERM)"
+            elif exit_code == 139:
+                hint = " (segfault)"
+            return "critical", f"exited with code {exit_code}{hint}"
+        if status == "restart":
+            return "warning", "restarted"
+        if status == "kill":
+            signal = attrs.get("signal")
+            return "warning", f"received signal {signal}" if signal else "was killed"
+        if status == "start":
+            return "noise", "started"
+        return "noise", status
+
+    def handle_container_event(
+        self, container_id: str, container_name: str, status: str, attrs: dict[str, Any] | None = None
+    ) -> AnalysisEvent | None:
+        """Record a docker lifecycle event as an AnalysisEvent (no LLM call) and
+        fire a restart-storm Telegram alert when die/oom events pile up."""
+        if not self.is_enabled():
+            return None
+        if self.is_excluded_container(container_name):
+            return None
+        attrs = dict(attrs or {})
+        classification, suffix = self.classify_container_event(status, attrs)
+        exit_code = attrs.get("exitCode")
+
+        event = AnalysisEvent(
+            container_id=container_id,
+            container_name=container_name,
+            status="container_event",
+            classification=classification,
+            matched_keywords=status,
+            summary=f"{container_name} {suffix}",
+            chunk_excerpt=json.dumps(attrs, sort_keys=True, default=str)[:1200],
+        )
+        self.event_repo.add(event)
+        db.session.flush()
+
+        if status in self.STORM_STATUSES:
+            self._maybe_send_restart_storm(event, exit_code)
+
+        db.session.commit()
+        return event
+
+    def _maybe_send_restart_storm(self, event: AnalysisEvent, exit_code: Any) -> None:
+        settings = self._settings()
+        threshold = settings.restart_alert_count
+        window_minutes = settings.restart_alert_window_minutes
+        if threshold <= 0 or window_minutes <= 0:
+            return
+        now = utcnow_naive()
+        exits = self.event_repo.count_container_events(
+            event.container_id, list(self.STORM_STATUSES), now - timedelta(minutes=window_minutes)
+        )
+        if exits < threshold:
+            return
+        cooldown_since = now - timedelta(minutes=settings.alert_cooldown_minutes)
+        if self.event_repo.find_recent_storm_alert(event.container_id, cooldown_since) is not None:
+            event.alert_error = "restart storm alert suppressed by cooldown"
+            return
+        text = (
+            f"🔁 RESTART STORM · {event.container_name} · {exits} exits in {window_minutes} min"
+            f" · last exit code {exit_code if exit_code is not None else '?'}"
+        )
+        sent, error, _ = self.alert_service.send_plain(text, AlertConfig.from_settings(settings))
+        event.alert_sent = sent
+        event.alert_error = error
 
     def handle_log_line(self, container_id: str, container_name: str, line: str, flush_only: bool = False) -> None:
         if not self.is_enabled():
