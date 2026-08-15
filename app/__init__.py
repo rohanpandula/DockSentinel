@@ -5,6 +5,7 @@ import os
 
 from dotenv import load_dotenv
 from flask import Flask
+from flask.json.provider import DefaultJSONProvider
 
 from app.config import AppConfig
 from app.extensions import db
@@ -48,11 +49,23 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(web_bp, name="")
 
 
+class ISOJSONProvider(DefaultJSONProvider):
+    """Serialise datetimes as ISO-8601 (Flask's default emits RFC 1123 HTTP-dates)."""
+
+    @staticmethod
+    def default(o):
+        import datetime as _dt
+        if isinstance(o, (_dt.datetime, _dt.date)):
+            return o.isoformat()
+        return DefaultJSONProvider.default(o)
+
+
 def create_app() -> Flask:
     load_dotenv()
     config = AppConfig.from_env()
 
     app = Flask(__name__)
+    app.json = ISOJSONProvider(app)
     app.config["SECRET_KEY"] = config.secret_key
     app.config["SQLALCHEMY_DATABASE_URI"] = config.database_url
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False

@@ -83,8 +83,10 @@ def _basic_auth_guard(user: str, password: str):
 
 
 def install_security(app: Flask) -> None:
-    app.config.setdefault("SESSION_COOKIE_SAMESITE", "Lax")
-    app.config.setdefault("SESSION_COOKIE_HTTPONLY", True)
+    # Flask pre-populates SESSION_COOKIE_SAMESITE=None, so setdefault would be a no-op.
+    if not app.config.get("SESSION_COOKIE_SAMESITE"):
+        app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+    app.config["SESSION_COOKIE_HTTPONLY"] = True
     app.before_request(_reject_cross_site_writes)
 
     user = (os.getenv("BASIC_AUTH_USER") or "").strip()

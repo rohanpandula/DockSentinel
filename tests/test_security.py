@@ -191,3 +191,9 @@ def test_try_llm_override_base_url_does_not_use_stored_key(client, monkeypatch):
 def test_ollama_models_rejects_non_http(client):
     r = client.get("/api/ollama/models?base_url=file:///etc")
     assert r.status_code == 400
+
+
+def test_samesite_lax_and_iso_datetimes(client):
+    assert client.application.config["SESSION_COOKIE_SAMESITE"] == "Lax"
+    body = client.get("/api/settings").get_json()
+    assert body["updated_at"] is None or "T" in body["updated_at"]  # ISO-8601, not RFC 1123
