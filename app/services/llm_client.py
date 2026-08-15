@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -7,6 +8,49 @@ from typing import Any
 import httpx
 
 from app.services.cli_backends import CLIBackendRunner
+
+
+# Hosts / models known to accept OpenAI-style ``response_format: {"type": "json_object"}``
+# on /chat/completions. Ollama's OpenAI-compatible endpoint supports it too. When the
+# base_url or model matches and the conversation asks for JSON, we send it once and
+# fall back to a plain request if the server rejects the parameter with HTTP 400.
+JSON_MODE_HOST_ALLOWLIST: tuple[str, ...] = (
+    "api.openai.com",
+    "openai.azure.com",
+    "openrouter.ai",
+    "api.groq.com",
+    "api.together.xyz",
+    "api.deepseek.com",
+    "api.mistral.ai",
+    "api.fireworks.ai",
+    ":11434",  # ollama
+    "localhost",
+    "127.0.0.1",
+    "host.docker.internal",
+)
+JSON_MODE_MODEL_PREFIXES: tuple[str, ...] = ("gpt-", "o1", "o3", "o4", "llama", "qwen", "mistral", "deepseek", "gemma", "phi")
+
+_JSON_HINT = re.compile(r"\bJSON\b", re.IGNORECASE)
+
+
+def json_mode_supported(base_url: str, model: str) -> bool:
+    url = (base_url or "").lower()
+    name = (model or "").lower()
+    if any(host in url for host in JSON_MODE_HOST_ALLOWLIST):
+        return True
+    return any(name.startswith(prefix) for prefix in JSON_MODE_MODEL_PREFIXES)
+
+
+def wants_json(messages: list[dict[str, str]]) -> bool:
+    """True when the prompt explicitly asks for a JSON reply (sentinel triage does; briefings don't)."""
+    return any(_JSON_HINT.search(m.get("content", "") or "") for m in messages)
+
+
+def _mentions_response_format(response: Any) -> bool:
+    try:
+        return "response_format" in (response.text or "")
+    except Exception:
+        return False
 
 
 @dataclass(slots=True)
@@ -74,12 +118,15 @@ class LLMClient:
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         }
-        payload = {
+        payload: dict[str, Any] = {
             "model": model,
             "messages": messages,
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
+        use_json_mode = json_mode_supported(base_url, model) and wants_json(messages)
+        if use_json_mode:
+            payload["response_format"] = {"type": "json_object"}
 
         backoff_seconds = 0.5
         last_error: str | None = None
@@ -89,6 +136,16 @@ class LLMClient:
             try:
                 with httpx.Client(timeout=timeout_seconds) as client:
                     response = client.post(endpoint, headers=headers, json=payload)
+                    if (
+                        use_json_mode
+                        and response.status_code == 400
+                        and _mentions_response_format(response)
+                    ):
+                        # Server doesn't support json mode: retry once without it
+                        # (and don't send it again on later retries).
+                        payload.pop("response_format", None)
+                        use_json_mode = False
+                        response = client.post(endpoint, headers=headers, json=payload)
                 latency_ms = int((time.monotonic() - start) * 1000)
 
                 if response.status_code >= 500 or response.status_code == 429:
