@@ -13,7 +13,7 @@
     <label class="field">
       <span class="field__label">New pattern</span>
       <div class="input-row">
-        <input class="input mono" name="container_pattern" placeholder="e.g. nginx-* or watchtower" required />
+        <input class="input mono" id="container_pattern" name="container_pattern" placeholder="e.g. nginx-* or watchtower" required />
         <button class="btn btn--primary">Add pattern</button>
       </div>
       <span class="field__help">Takes effect immediately; already-attached containers matching the pattern are detached.</span>
@@ -55,7 +55,8 @@
                 <div class="empty empty--compact">
                   <div class="empty__icon"><svg aria-hidden="true"><use href="#ico-filter"/></svg></div>
                   <p class="empty__title">No exclusions configured</p>
-                  <p>Every running container is being monitored. Add a pattern above to skip noisy or irrelevant ones.</p>
+                  <p>Every running container is being monitored. Add a pattern to skip noisy or irrelevant ones.</p>
+                  <a class="btn btn--sm" href="#container_pattern">Add a pattern</a>
                 </div>
               </td>
             </tr>

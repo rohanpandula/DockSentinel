@@ -51,7 +51,7 @@
             <div class="empty__icon"><svg aria-hidden="true"><use href="#ico-issue"/></svg></div>
             <p class="empty__title">No issues{% if active_status %} with status “{{ active_status }}”{% endif %}</p>
             <p>Approve, reject, or discuss an alert in Telegram to create one.</p>
-            {% if active_status %}<a class="btn btn--sm" href="{{ url_for('issues_page') }}">Show all</a>{% endif %}
+            {% if active_status %}<a class="btn btn--sm" href="{{ url_for('issues_page') }}">Show all</a>{% else %}<a class="btn btn--sm" href="{{ url_for('insights_page') }}">Browse events</a>{% endif %}
           </div>
         </li>
       {% endfor %}

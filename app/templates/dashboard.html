@@ -167,6 +167,8 @@
                       <input type="hidden" name="enabled" value="true" />
                       <button class="btn btn--primary btn--sm">Start sentinel</button>
                     </form>
+                    {% else %}
+                    <a class="btn btn--sm" href="{{ url_for('insights_page') }}">Open events</a>
                     {% endif %}
                   </div>
                 </td>
