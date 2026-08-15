@@ -1,8 +1,18 @@
 from __future__ import annotations
 
+import re
+
 from typing import Any, Optional
 
 import httpx
+
+
+_TOKEN_RE = re.compile(r"/bot[0-9]+:[A-Za-z0-9_-]+")
+
+
+def _redact_token(text: str) -> str:
+    """Strip bot tokens from error text before it reaches logs/DB."""
+    return _TOKEN_RE.sub("/bot<redacted>", text or "")
 
 
 class TelegramNotifier:
@@ -39,7 +49,7 @@ class TelegramNotifier:
             message_id = data.get("result", {}).get("message_id")
             return True, None, message_id
         except httpx.HTTPError as exc:
-            return False, str(exc), None
+            return False, _redact_token(str(exc)), None
 
     def edit_message_reply_markup(
         self,
@@ -107,7 +117,11 @@ class TelegramNotifier:
             response.raise_for_status()
             data = response.json()
             return data.get("result", []) or []
-        except httpx.HTTPError as exc:
+        except httpx.HTTPStatusError as exc:
             # Let the poll loop back off; returning [] here made a bad token /
             # 409 conflict / DNS failure spin at full speed forever.
-            raise RuntimeError(f"telegram getUpdates failed: {exc}") from exc
+            code = exc.response.status_code
+            hint = " (another process is polling this bot token — only one getUpdates consumer is allowed)" if code == 409 else (" (bad bot token)" if code == 401 else "")
+            raise RuntimeError(f"telegram getUpdates failed: HTTP {code}{hint}") from None
+        except httpx.HTTPError as exc:
+            raise RuntimeError(f"telegram getUpdates failed: {_redact_token(str(exc))}") from None

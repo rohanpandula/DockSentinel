@@ -211,3 +211,27 @@ def test_bot_ask_llm_uses_sentinel_system_prompt(app, container, monkeypatch):
         assert seen["messages"][0]["role"] == "system"
         assert seen["messages"][0]["content"].startswith("CUSTOM SYSTEM PROMPT")
         assert sum(1 for m in seen["messages"] if m["role"] == "system") == 1
+
+
+def test_get_updates_errors_never_leak_token(monkeypatch):
+    import httpx
+    from app.services.telegram import TelegramNotifier, _redact_token
+
+    class _Resp:
+        status_code = 409
+        def raise_for_status(self):
+            req = httpx.Request("GET", "https://api.telegram.org/bot123:SECRET/getUpdates")
+            raise httpx.HTTPStatusError("Client error '409 Conflict' for url 'https://api.telegram.org/bot123:SECRET/getUpdates'", request=req, response=httpx.Response(409, request=req))
+
+    class _C:
+        def __init__(self, *a, **k): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def get(self, url, params=None): return _Resp()
+
+    monkeypatch.setattr(httpx, "Client", _C)
+    with pytest.raises(RuntimeError) as ei:
+        TelegramNotifier().get_updates("123:SECRET", offset=0)
+    assert "SECRET" not in str(ei.value)
+    assert "409" in str(ei.value)
+    assert "SECRET" not in _redact_token("x https://api.telegram.org/bot123:SECRET/sendMessage y")

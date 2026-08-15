@@ -92,8 +92,10 @@ class TelegramBotService:
                             self._dispatch(update, token)
                     except Exception:
                         logger.exception("telegram bot update dispatch failed")
-            except Exception:
-                logger.exception("telegram bot polling error")
+            except Exception as exc:
+                # One line, no traceback: this fires every 5s while e.g. a 409
+                # conflict persists, and the message already says what's wrong.
+                logger.warning("telegram bot polling error: %s", exc)
                 self._stop.wait(5)
 
     def _token(self) -> str:
