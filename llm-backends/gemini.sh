@@ -7,4 +7,5 @@ if ! command -v gemini >/dev/null 2>&1; then
 fi
 
 prompt="$(cat)"
-gemini -p "$prompt"
+# `exec` so a timeout kills the real process, not just this wrapper.
+exec gemini -p "$prompt"

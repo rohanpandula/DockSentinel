@@ -8,4 +8,4 @@ fi
 
 prompt="$(cat)"
 model="${OLLAMA_MODEL:-llama3}"
-ollama run "$model" "$prompt"
+exec ollama run "$model" "$prompt"

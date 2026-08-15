@@ -100,7 +100,27 @@ class TelegramBotService:
         settings = self.settings_repo.get()
         return (settings.telegram_token or "").strip()
 
+    def _allowed_chat_id(self) -> str:
+        settings = self.settings_repo.get()
+        return str(settings.telegram_chat_id or "").strip()
+
+    @staticmethod
+    def _update_chat_id(update: dict[str, Any]) -> str:
+        if "callback_query" in update:
+            msg = (update["callback_query"] or {}).get("message") or {}
+        else:
+            msg = update.get("message") or {}
+        return str((msg.get("chat") or {}).get("id", "")).strip()
+
     def _dispatch(self, update: dict[str, Any], token: str) -> None:
+        # Only the configured operator chat may drive the bot. Anyone can find
+        # a bot by username and DM it; without this check a stranger could
+        # attach to an issue thread and receive log excerpts + LLM answers.
+        allowed = self._allowed_chat_id()
+        chat_id = self._update_chat_id(update)
+        if not allowed or chat_id != allowed:
+            logger.warning("telegram update from unauthorised chat %r ignored", chat_id)
+            return
         if "callback_query" in update:
             self._handle_callback(update["callback_query"], token)
         elif "message" in update:
@@ -176,7 +196,7 @@ class TelegramBotService:
 
         issue: Optional[LocalIssue] = None
         if reply_to_id:
-            issue = self.issue_repo.get_by_telegram_message(int(reply_to_id))
+            issue = self.issue_repo.get_by_telegram_message(int(reply_to_id), chat_id=chat_id)
         if issue is None:
             issue = self.issue_repo.get_latest_discussing_for_chat(chat_id)
         if issue is None or issue.status != LocalIssueStatus.DISCUSSING.value:

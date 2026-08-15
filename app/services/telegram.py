@@ -107,5 +107,7 @@ class TelegramNotifier:
             response.raise_for_status()
             data = response.json()
             return data.get("result", []) or []
-        except httpx.HTTPError:
-            return []
+        except httpx.HTTPError as exc:
+            # Let the poll loop back off; returning [] here made a bad token /
+            # 409 conflict / DNS failure spin at full speed forever.
+            raise RuntimeError(f"telegram getUpdates failed: {exc}") from exc

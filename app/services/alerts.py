@@ -87,7 +87,7 @@ class AlertService:
             lines.append(event.root_cause_hypothesis)
         if event.fix_suggestion:
             lines.append("")
-            lines.append("SUGGESTED FIX")
+            lines.append("SUGGESTED FIX (model-generated — verify before running)")
             lines.append(event.fix_suggestion)
         lines.append("")
         if confidence is not None:
