@@ -16,11 +16,16 @@ from pathlib import Path
 # Only what a CLI needs to run and authenticate is passed through.
 _ENV_PASSTHROUGH_EXACT = frozenset({
     "PATH", "HOME", "USER", "LOGNAME", "SHELL", "TERM", "LANG", "LC_ALL", "LC_CTYPE",
-    "TMPDIR", "TZ", "NODE_OPTIONS", "NO_COLOR",
-    "OPENAI_API_KEY", "OPENAI_BASE_URL", "ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL",
-    "GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_CLOUD_PROJECT",
+    "TMPDIR", "TZ", "NODE_OPTIONS", "NODE_PATH", "NO_COLOR",
+    # outbound-proxy / CA settings a homelab CLI may need to reach its API
+    "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy",
+    "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE", "NODE_EXTRA_CA_CERTS",
 })
-_ENV_PASSTHROUGH_PREFIXES = ("XDG_", "OLLAMA_", "CLAUDE_", "CODEX_", "GEMINI_", "DOCKSENTINEL_CLI_")
+# Provider auth/config for the supported CLIs (claude, codex, gemini, ollama).
+_ENV_PASSTHROUGH_PREFIXES = (
+    "XDG_", "OLLAMA_", "CLAUDE_", "ANTHROPIC_", "CODEX_", "OPENAI_", "GEMINI_", "GOOGLE_",
+    "DOCKSENTINEL_CLI_",
+)
 _ENV_EXTRA_VAR = "DOCKSENTINEL_CLI_ENV_PASSTHROUGH"  # comma-separated extra names
 
 

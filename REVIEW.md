@@ -13,6 +13,19 @@ Static review of `a7f02ff`; tests run under Python 3.12 (Homebrew) — 46 passin
 | 5 | `docker-entrypoint.sh` stamps `0001` or `0002` (detected from the actual `settings` columns) instead of `head`, so 0003–0005 apply on upgrade. |
 | — | Bonus: `keyword_flush_delay_lines` schema type `str`→`int`; range bounds on numeric settings (`nightly_hour` 0–23 etc.). Tests: `tests/test_security.py` (11), `tests/test_docker_watcher.py` (3). |
 
+## Batch 2 — FIXED (items 6, 7, 8, 10, 14; 76 tests pass, coverage 81% → gate green)
+
+| # | Fix landed |
+|---|---|
+| 6 | `verdict_parser.extract_json_object`: strips ``` fences, extracts first balanced `{…}` (string/escape-aware). Parse errors now call `_record_llm_failure` → runtime `degraded`, `llm_failure_count` increments. |
+| 7 | `cli_backends.build_backend_env`: allowlisted env only (PATH/HOME/locale/proxy + provider prefixes; extra via `DOCKSENTINEL_CLI_ENV_PASSTHROUGH`) — `SECRET_KEY`, `DATABASE_URL`, `TELEGRAM_*`, `BASIC_AUTH_*`, `DOCKER_HOST` never reach the CLI. Logs wrapped in `<logs>` with an untrusted-data instruction; Telegram fix labelled "model-generated — verify before running". Wrappers `exec` the real CLI; `claude.sh` adds `--tools ""` when supported. |
+| 8 | `TelegramBotService._dispatch` drops any update whose chat id ≠ `settings.telegram_chat_id` (and everything when unset); `get_by_telegram_message` is chat-scoped. |
+| 10 | `TelegramNotifier.get_updates` raises on HTTP error → poll loop backs off 5s instead of hot-looping. |
+| 14 | CLI backend runs in its own process group (`start_new_session=True`) and is `SIGKILL`ed as a group on timeout — no orphaned `claude`/`gemini`/`codex` still burning tokens. |
+
+### Second-opinion pass (local Qwen3-27B, adversarial prompt)
+Batch 1 diff reviewed. Of 8 claims: **3 acted on** — reverse-proxy `Host` rewrite would 403 legit browser POSTs (now honours `X-Forwarded-Host`); no way to clear a secret (JSON `null` now clears); reconcile poked on clean container stop (now only on error path). **5 rejected after checking code:** `_reconcile_now` "may be undefined" (it's in `__init__`); httpx "follows redirects by default" (it doesn't — `follow_redirects=False` is httpx's default); `VAR=$(cmd)` "escapes `set -e`" (POSIX: exit status of assignment-only command is that of the last command substitution, so `set -e` fires); error handlers "registered after security so 403 is unformatted" (registration order is irrelevant to handler lookup); "settings race condition" (none identified — the point restated the intended keep-on-blank behaviour). Batch 2 diff: server dropped the connection twice; result recorded below if/when it answers.
+
 ## Do first (5 items) — original findings
 
 | # | Sev | Finding | Where | Fix |

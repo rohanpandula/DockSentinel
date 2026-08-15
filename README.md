@@ -168,6 +168,7 @@ Backend wrappers live in `llm-backends/` and follow a stdin/stdout contract: rea
 | `MDNS_PORT` | `5000` | Port advertised in the mDNS service record |
 | `BASIC_AUTH_USER` | *(unset)* | With `BASIC_AUTH_PASSWORD`, require HTTP basic auth on every route except `/api/health` |
 | `BASIC_AUTH_PASSWORD` | *(unset)* | Password for basic auth (both vars must be set to enable) |
+| `DOCKSENTINEL_CLI_ENV_PASSTHROUGH` | *(unset)* | Comma-separated extra env var names to pass to CLI backends. By default only `PATH`/`HOME`/locale/proxy vars and `OPENAI_*`, `ANTHROPIC_*`, `CLAUDE_*`, `CODEX_*`, `GEMINI_*`, `GOOGLE_*`, `OLLAMA_*` reach the CLI — never the app's own secrets |
 
 ## API Endpoints
 
