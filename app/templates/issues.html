@@ -1,192 +1,187 @@
 {% extends "base.html" %}
 {% block title %}DockSentinel — Issues{% endblock %}
+{% macro status_badge(status) -%}
+  {% if status == 'open' %}<span class="badge badge--ok">open</span>
+  {% elif status == 'discussing' %}<span class="badge badge--warning">discussing</span>
+  {% elif status == 'rejected' %}<span class="badge badge--critical">rejected</span>
+  {% else %}<span class="badge badge--neutral">closed</span>{% endif %}
+{%- endmacro %}
 {% block content %}
-<div class="page-header">
+<div class="page-head">
   <div>
-    <h1 class="page-title">Issues</h1>
-    <p class="page-subtitle">Local issue tracker — decisions you make from Telegram land here. Approve creates an open issue, Reject records the dismissal, Discuss opens a threaded conversation.</p>
+    <h1 class="page-head__title">Issues</h1>
+    <p class="page-head__sub">Decisions you make from Telegram land here — Approve opens an issue, Reject records the dismissal, Discuss starts a thread.</p>
   </div>
-  <div class="row" style="gap:6px;">
+  <nav class="chips" aria-label="Filter by status">
     {% set status_filters = [('', 'all'), ('open','open'), ('discussing','discussing'), ('rejected','rejected'), ('closed','closed')] %}
     {% for value, label in status_filters %}
       {% set is_active = (active_status or '') == value %}
-      <a class="btn btn--sm {% if is_active %}btn--primary{% else %}btn--ghost{% endif %}"
+      <a class="chip {% if is_active %}chip--active{% endif %}" {% if is_active %}aria-current="true"{% endif %}
          href="{{ url_for('issues_page', status=value) if value else url_for('issues_page') }}">
         {{ label }}
-        {% if counts.get(value) %}<span class="text-tertiary tabular" style="margin-left:4px;">{{ counts.get(value) }}</span>{% endif %}
+        {% if counts.get(value) %}<span class="chip__count">{{ counts.get(value) }}</span>{% endif %}
       </a>
     {% endfor %}
-  </div>
+  </nav>
 </div>
 
-<div class="grid" style="grid-template-columns: 320px 1fr; gap:16px; align-items:start;">
-  <section class="card">
-    <h2 class="card__title">List</h2>
-    <ul class="list-reset mt-md">
+<div class="split">
+  <section class="card" aria-label="Issue list">
+    <div class="card__head">
+      <h2 class="card__title">{{ active_status or 'All' }} issues</h2>
+      <span class="text-tertiary text-xs">{{ issues|length }}</span>
+    </div>
+    <ul class="list-reset">
       {% for issue in issues %}
         {% set is_selected = selected and selected.id == issue.id %}
         <li>
-          <a class="report-link" href="{{ url_for('issues_page', id=issue.id, status=active_status or '') }}"
-             style="{% if is_selected %}background: var(--bg-hover); color: var(--fg-primary);{% endif %}">
-            <span class="report-link__id">#{{ issue.id }}</span>
-            <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-              <span class="text-mono text-tertiary" style="font-size:11px;">{{ issue.container_name }}</span><br/>
-              <span>{{ issue.title }}</span>
+          <a class="row-link {% if is_selected %}row-link--active{% endif %}" {% if is_selected %}aria-current="true"{% endif %}
+             href="{{ url_for('issues_page', id=issue.id, status=active_status or '') }}">
+            <span class="row-link__id">#{{ issue.id }}</span>
+            <span class="row-link__title">
+              <span class="row-link__meta">{{ issue.container_name }}</span>
+              {{ issue.title }}
             </span>
-            {% if issue.status == 'open' %}
-              <span class="badge badge--ok">open</span>
-            {% elif issue.status == 'discussing' %}
-              <span class="badge badge--warning">discussing</span>
-            {% elif issue.status == 'rejected' %}
-              <span class="badge badge--critical">rejected</span>
-            {% else %}
-              <span class="badge badge--neutral">closed</span>
-            {% endif %}
+            {{ status_badge(issue.status) }}
           </a>
         </li>
       {% else %}
         <li>
-          <div class="empty">
-            <div class="empty__icon">∅</div>
-            <p class="empty__title">No issues yet</p>
+          <div class="empty empty--compact">
+            <div class="empty__icon"><svg aria-hidden="true"><use href="#ico-issue"/></svg></div>
+            <p class="empty__title">No issues{% if active_status %} with status “{{ active_status }}”{% endif %}</p>
             <p>Approve, reject, or discuss an alert in Telegram to create one.</p>
+            {% if active_status %}<a class="btn btn--sm" href="{{ url_for('issues_page') }}">Show all</a>{% endif %}
           </div>
         </li>
       {% endfor %}
     </ul>
   </section>
 
-  <section class="card card--padded">
+  <section class="card card--pad" aria-label="Issue detail">
     {% if selected %}
-      <div class="card__header">
-        <div>
-          <h2 class="card__title card__title--lg" style="margin:0 0 4px;">#{{ selected.id }} · {{ selected.title }}</h2>
-          <p class="text-tertiary" style="font-size:12px; margin:0;">
-            {{ selected.container_name }} · created {{ selected.created_at }} · updated {{ selected.updated_at }}
+      <div class="detail-head">
+        <div class="flex-1">
+          <h2 class="detail-head__title">#{{ selected.id }} · {{ selected.title }}</h2>
+          <p class="detail-head__meta">
+            <span class="text-mono">{{ selected.container_name }}</span> · created {{ selected.created_at }} · updated {{ selected.updated_at }}
           </p>
         </div>
-        <div class="row" style="gap:6px; flex-wrap:wrap; justify-content:flex-end;">
-          {% if selected.status == 'open' %}
-            <span class="badge badge--ok">open</span>
-          {% elif selected.status == 'discussing' %}
-            <span class="badge badge--warning">discussing</span>
-          {% elif selected.status == 'rejected' %}
-            <span class="badge badge--critical">rejected</span>
-          {% else %}
-            <span class="badge badge--neutral">closed</span>
-          {% endif %}
+        <div class="row row--end">
+          {{ status_badge(selected.status) }}
           {% if selected.confidence is not none %}
-            <span class="text-tertiary text-mono" style="font-size:12px;">conf {{ '%.2f' % selected.confidence }}</span>
+            <span class="badge badge--neutral badge--no-dot" title="Model confidence">conf {{ '%.2f' % selected.confidence }}</span>
           {% endif %}
         </div>
       </div>
 
-      {% if analyzed_by %}
-        <div class="mt-md" style="padding:10px 12px; background: var(--bg-app); border:1px solid var(--border-subtle); border-radius: var(--radius-md); display:flex; align-items:baseline; gap:10px; flex-wrap:wrap;">
-          <span class="eyebrow" style="margin:0;">Root cause analyzed by</span>
-          <span class="text-mono" style="color: var(--accent); font-size:12px; word-break:break-all;">{{ analyzed_by }}</span>
-        </div>
-      {% else %}
-        <div class="mt-md text-tertiary text-mono" style="font-size:11px;">
-          Root cause analyzed by: unknown (synthetic or pre-migration event)
-        </div>
-      {% endif %}
+      <div class="meta-strip mt-4">
+        <span class="eyebrow">Root cause analyzed by</span>
+        {% if analyzed_by %}
+          <span class="text-mono">{{ analyzed_by }}</span>
+        {% else %}
+          <span class="text-tertiary">unknown (synthetic or pre-migration event)</span>
+        {% endif %}
+      </div>
 
-      <pre class="report-view mt-md" style="max-height:50vh;">{{ selected.body }}</pre>
+      <pre class="report-view mt-4 scroll-y">{{ selected.body }}</pre>
 
       {% if selected.discussion %}
-        <h3 class="section-title mt-lg">Discussion</h3>
-        <pre class="report-view" style="max-height:45vh;">{{ selected.discussion }}</pre>
+        <h3 class="section-title mt-6 mb-2" style="font-size:15px;">Discussion</h3>
+        <pre class="report-view scroll-y">{{ selected.discussion }}</pre>
       {% endif %}
 
-      <form method="post" action="{{ url_for('issues_set_status', issue_id=selected.id) }}" class="row mt-lg" style="gap:8px;">
+      <form method="post" action="{{ url_for('issues_set_status', issue_id=selected.id) }}" class="btn-row mt-4">
         {% if selected.status != 'closed' %}
-          <button class="btn" name="status" value="closed">Close</button>
+          <button class="btn" name="status" value="closed">Close issue</button>
         {% endif %}
         {% if selected.status == 'closed' or selected.status == 'rejected' %}
           <button class="btn btn--primary" name="status" value="open">Reopen</button>
         {% endif %}
+        {% if selected.event_id %}
+          <a class="btn btn--ghost" href="{{ url_for('insights_page') }}?container={{ selected.container_name|urlencode }}">Related events<svg aria-hidden="true"><use href="#ico-arrow"/></svg></a>
+        {% endif %}
       </form>
 
-      <section class="mt-lg" data-tryllm data-issue-id="{{ selected.id }}">
-        <h3 class="section-title">Try another LLM</h3>
-        <p class="text-tertiary" style="font-size:12px; margin:0 0 12px;">
-          Paste a prompt, optionally override the LLM endpoint, and the model's response will appear below. The issue body is automatically included as context. Overrides are used for this call only — nothing is saved to Settings.
-        </p>
+      <hr class="divider" />
 
-        <label class="field">
-          <span class="field__label">Prompt</span>
-          <textarea class="input mono" data-tryllm-prompt rows="4"
-            placeholder="e.g. Give me an alternative fix that does not require a restart.">Suggest two alternative root causes and one-line fix commands for each.</textarea>
-        </label>
-
-        <div class="field-grid mt-md" style="grid-template-columns: repeat(3, 1fr);">
-          <label class="field">
-            <span class="field__label">Base URL override</span>
-            <input class="input mono" data-tryllm-field="base_url" placeholder="leave blank to use Settings" />
-          </label>
-          <label class="field">
-            <span class="field__label">Model</span>
-            <select class="input mono" data-tryllm-model-select data-tryllm-field="model">
-              <option value="">(inherit from Settings)</option>
-              <option value="__custom__">Custom…</option>
-            </select>
-            <input class="input mono mt-md" data-tryllm-model-custom placeholder="type a model name" hidden />
-            <span class="text-tertiary" data-tryllm-model-hint style="font-size:11px; margin-top:4px;">Loading Ollama model list…</span>
-          </label>
-          <label class="field">
-            <span class="field__label">API key override</span>
-            <input class="input mono" data-tryllm-field="api_key" type="password" placeholder="leave blank to use Settings" />
-          </label>
-          <label class="field">
-            <span class="field__label">Transport</span>
-            <select class="input" data-tryllm-field="transport">
-              <option value="">(inherit)</option>
-              <option value="api">api</option>
-              <option value="cli">cli</option>
-            </select>
-          </label>
-          <label class="field">
-            <span class="field__label">CLI backend</span>
-            <select class="input" data-tryllm-field="cli_backend">
-              <option value="">(inherit)</option>
-              <option value="codex">codex</option>
-              <option value="claude">claude</option>
-              <option value="gemini">gemini</option>
-              <option value="ollama">ollama</option>
-            </select>
-          </label>
-        </div>
-
-        <div class="row mt-md" style="gap:10px;">
-          <button class="btn btn--primary" data-tryllm-run type="button">Run</button>
-          <span class="inline-output" data-tryllm-status style="flex:1;"></span>
-        </div>
-
-        <div data-tryllm-result class="mt-md" hidden>
-          <div class="row row--between" style="margin-bottom:8px; align-items:flex-start; gap:16px;">
-            <div>
-              <div class="eyebrow" style="margin-bottom:4px;">Response from</div>
-              <div class="text-mono" data-tryllm-model style="color: var(--accent); font-size:13px; word-break:break-all;"></div>
-            </div>
-            <span class="text-tertiary text-mono" style="font-size:11px;" data-tryllm-meta></span>
+      <section data-tryllm data-issue-id="{{ selected.id }}" aria-labelledby="tryllm-title">
+        <div class="section-head">
+          <div>
+            <h3 class="section-title" id="tryllm-title" style="font-size:15px;">Try another LLM</h3>
+            <p class="text-tertiary text-sm">Ask a different model about this issue. The issue body is included as context; overrides apply to this call only and are never saved.</p>
           </div>
-          <pre class="report-view" style="max-height:50vh;" data-tryllm-body></pre>
+        </div>
+
+        <div class="stack">
+          <label class="field">
+            <span class="field__label">Prompt</span>
+            <textarea class="textarea mono" data-tryllm-prompt rows="4" style="min-height:96px;"
+              placeholder="e.g. Give me an alternative fix that does not require a restart.">Suggest two alternative root causes and one-line fix commands for each.</textarea>
+          </label>
+
+          <div class="field-grid">
+            <label class="field">
+              <span class="field__label">Base URL override</span>
+              <input class="input mono" data-tryllm-field="base_url" placeholder="leave blank to use Settings" />
+            </label>
+            <label class="field">
+              <span class="field__label">Model</span>
+              <select class="select mono" data-tryllm-model-select data-tryllm-field="model">
+                <option value="">(inherit from Settings)</option>
+                <option value="__custom__">Custom…</option>
+              </select>
+              <input class="input mono" data-tryllm-model-custom placeholder="type a model name" aria-label="Custom model name" hidden />
+              <span class="field__help" data-tryllm-model-hint>Loading Ollama model list…</span>
+            </label>
+            <label class="field">
+              <span class="field__label">API key override</span>
+              <input class="input mono" data-tryllm-field="api_key" type="password" autocomplete="off" placeholder="leave blank to use Settings" />
+            </label>
+            <label class="field">
+              <span class="field__label">Transport</span>
+              <select class="select" data-tryllm-field="transport">
+                <option value="">(inherit)</option>
+                <option value="api">api</option>
+                <option value="cli">cli</option>
+              </select>
+            </label>
+            <label class="field">
+              <span class="field__label">CLI backend</span>
+              <select class="select" data-tryllm-field="cli_backend">
+                <option value="">(inherit)</option>
+                <option value="codex">codex</option>
+                <option value="claude">claude</option>
+                <option value="gemini">gemini</option>
+                <option value="ollama">ollama</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="row">
+            <button class="btn btn--primary" data-tryllm-run type="button"><svg aria-hidden="true"><use href="#ico-bolt"/></svg>Run</button>
+            <span class="inline-output flex-1" data-tryllm-status role="status"></span>
+          </div>
+
+          <div data-tryllm-result class="card card--pad" style="background: var(--bg-raised);" hidden>
+            <div class="row row--between mb-2">
+              <div>
+                <div class="eyebrow">Response from</div>
+                <div class="text-mono text-accent text-sm break" data-tryllm-model></div>
+              </div>
+              <span class="text-tertiary text-mono text-xs" data-tryllm-meta></span>
+            </div>
+            <pre class="report-view scroll-y" data-tryllm-body></pre>
+          </div>
         </div>
       </section>
     {% else %}
       <div class="empty">
-        <div class="empty__icon">◦</div>
+        <div class="empty__icon"><svg aria-hidden="true"><use href="#ico-issue"/></svg></div>
         <p class="empty__title">Pick an issue</p>
-        <p>Select an entry from the list to view its body and discussion history.</p>
+        <p>Select an entry from the list to read its body, discussion history, and ask another model about it.</p>
       </div>
     {% endif %}
   </section>
 </div>
-
-<style>
-  @media (max-width: 900px) {
-    main .grid[style*="320px"] { grid-template-columns: 1fr !important; }
-  }
-</style>
 {% endblock %}
