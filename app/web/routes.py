@@ -50,8 +50,9 @@ def dashboard():
                 counts[event.classification] += 1
         elif event.status in {"parse_error", "llm_error"}:
             counts["errors"] += 1
-        else:
+        elif event.status in {"skipped", "dedup_skipped", "rate_limited", "excluded", "queued"}:
             counts["skipped"] += 1
+        # container_event rows (die/oom/restart) are lifecycle signals, not chunks — not counted here.
 
     events = container.event_repo.get_recent(limit=10)
     latest_report = container.report_repo.get_latest()
