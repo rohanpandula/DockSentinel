@@ -10,10 +10,10 @@
 
 <section class="card card--padded">
   <form method="get">
-    <div class="field-grid" style="grid-template-columns: repeat(4, 1fr);">
+    <div class="field-grid" style="grid-template-columns: repeat(5, 1fr);">
       <label class="field">
         <span class="field__label">Container</span>
-        <input class="input mono" name="container" list="container-list" placeholder="any" />
+        <input class="input mono" name="container" list="container-list" placeholder="any" value="{{ filters.container }}" />
         <datalist id="container-list">
           {% for c in containers %}<option value="{{ c }}"></option>{% endfor %}
         </datalist>
@@ -22,14 +22,23 @@
         <span class="field__label">Severity</span>
         <select class="select" name="classification">
           <option value="">all</option>
-          <option value="critical">critical</option>
-          <option value="warning">warning</option>
-          <option value="noise">noise</option>
+          {% for c in ['critical', 'warning', 'noise'] %}
+            <option value="{{ c }}" {% if filters.classification == c %}selected{% endif %}>{{ c }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="field">
+        <span class="field__label">Status</span>
+        <select class="select" name="status">
+          <option value="">all</option>
+          {% for s in statuses %}
+            <option value="{{ s }}" {% if filters.status == s %}selected{% endif %}>{{ s }}</option>
+          {% endfor %}
         </select>
       </label>
       <label class="field">
         <span class="field__label">Since</span>
-        <input class="input tabular" name="start" type="datetime-local" />
+        <input class="input tabular" name="start" type="datetime-local" value="{{ filters.start }}" />
       </label>
       <label class="field" style="justify-content: flex-end;">
         <span class="field__label">&nbsp;</span>
@@ -53,9 +62,23 @@
           <span class="badge badge--noise">{{ e.classification or 'noise' }}</span>
         {% endif %}
         <span class="text-secondary" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ e.summary or e.status }}</span>
+        {% if e.alert_sent %}
+          <span class="badge badge--ok badge--no-dot" title="Telegram alert sent">alerted</span>
+        {% elif e.alert_error %}
+          <span class="badge badge--neutral badge--no-dot" title="{{ e.alert_error }}">not alerted</span>
+        {% endif %}
+        {% if issue_by_event.get(e.id) %}
+          <a class="badge badge--warning badge--no-dot" href="{{ url_for('issues_page', id=issue_by_event[e.id]) }}">issue #{{ issue_by_event[e.id] }}</a>
+        {% endif %}
       </summary>
       <div class="disclosure__body">
-        <p><strong>Status</strong> — {{ e.status }}</p>
+        <p><strong>Status</strong> — {{ e.status }}{% if e.llm_error %} · <span class="text-mono">{{ e.llm_error }}</span>{% endif %}{% if e.parse_error %} · <span class="text-mono">{{ e.parse_error }}</span>{% endif %}</p>
+        {% if e.alert_error %}
+          <p><strong>Alert</strong> — <span class="text-secondary">{{ e.alert_error }}</span></p>
+        {% endif %}
+        {% if issue_by_event.get(e.id) %}
+          <p><strong>Issue</strong> — <a href="{{ url_for('issues_page', id=issue_by_event[e.id]) }}">#{{ issue_by_event[e.id] }}</a></p>
+        {% endif %}
         <p><strong>Root cause</strong> — {{ e.root_cause_hypothesis or '—' }}</p>
         <p><strong>Fix suggestion</strong> — {{ e.fix_suggestion or '—' }}</p>
         <p><strong>Confidence</strong> — <span class="tabular">{{ e.confidence if e.confidence is not none else '—' }}</span></p>
@@ -67,7 +90,7 @@
       <div class="empty">
         <div class="empty__icon">∅</div>
         <p class="empty__title">No events match this filter</p>
-        <p>Try widening the time window or clearing the severity filter.</p>
+        <p>Try widening the time window or clearing the severity/status filter. <a href="{{ url_for('insights_page') }}">Clear filters</a></p>
       </div>
     </div>
   {% endfor %}

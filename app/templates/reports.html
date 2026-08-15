@@ -20,8 +20,10 @@
           <a class="report-link" href="{{ url_for('reports_page', id=report.id) }}">
             <span class="report-link__id">#{{ report.id }}</span>
             <span class="text-mono text-secondary">{{ report.created_at }}</span>
-            {% if report.status == 'ok' or report.status == 'success' %}
+            {% if report.status == 'generated' %}
               <span class="badge badge--ok">{{ report.status }}</span>
+            {% elif report.status == 'llm_error' %}
+              <span class="badge badge--critical" title="{{ report.error or 'LLM call failed; fallback report shown' }}">llm error</span>
             {% else %}
               <span class="badge badge--neutral">{{ report.status }}</span>
             {% endif %}
@@ -45,7 +47,16 @@
         <h2 class="card__title card__title--lg">Report #{{ selected_report.id }}</h2>
         <span class="text-mono text-tertiary">{{ selected_report.period_start }} → {{ selected_report.period_end }}</span>
       </div>
-      <div class="report-view">{{ selected_report.markdown_content }}</div>
+      {% if selected_report.status == 'llm_error' %}
+        <div class="card card--padded" style="border-color: var(--critical); margin-bottom: 12px;">
+          <strong>LLM call failed</strong> — showing the fallback summary.
+          {% if selected_report.error %}<div class="text-mono text-secondary" style="margin-top:6px;">{{ selected_report.error }}</div>{% endif %}
+        </div>
+      {% endif %}
+      <div class="text-tertiary" style="font-size: 11px; margin-bottom: 8px;">
+        model: <span class="text-mono">{{ selected_report.model or '—' }}</span> · prompt v{{ selected_report.prompt_version }}
+      </div>
+      <div class="report-view report-view--rendered">{{ report_html }}</div>
     {% else %}
       <div class="empty">
         <div class="empty__icon">◦</div>
@@ -57,6 +68,17 @@
 </div>
 
 <style>
+  .report-view--rendered { white-space: normal; font-family: inherit; font-size: 13.5px; }
+  .report-view--rendered h1, .report-view--rendered h2, .report-view--rendered h3,
+  .report-view--rendered h4 { margin: 14px 0 6px; font-size: 14px; font-weight: 600; }
+  .report-view--rendered h1 { font-size: 16px; }
+  .report-view--rendered h2 { font-size: 15px; }
+  .report-view--rendered p { margin: 6px 0; }
+  .report-view--rendered ul, .report-view--rendered ol { margin: 6px 0 6px 20px; }
+  .report-view--rendered li { margin: 2px 0; }
+  .report-view--rendered code { font-family: var(--font-mono); font-size: 12px; background: var(--bg-elevated, rgba(127,127,127,.15)); padding: 1px 4px; border-radius: 3px; }
+  .report-view--rendered pre { font-family: var(--font-mono); font-size: 12px; white-space: pre-wrap; padding: 8px 10px; border-radius: 4px; background: var(--bg-elevated, rgba(127,127,127,.15)); }
+  .report-view--rendered pre code { background: none; padding: 0; }
   @media (max-width: 900px) {
     main .grid[style*="300px"] { grid-template-columns: 1fr !important; }
   }

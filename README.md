@@ -165,7 +165,7 @@ Backend wrappers live in `llm-backends/` and follow a stdin/stdout contract: rea
 | `APP_PORT` | `5000` | Port Flask binds to inside the container |
 | `MDNS_ENABLED` | `false` | Publish `<hostname>.local` via zeroconf |
 | `MDNS_HOSTNAME` | `docksentinel` | Advertised hostname |
-| `MDNS_PORT` | `5000` | Port advertised in the mDNS service record |
+| `MDNS_PORT` | `80` | Port advertised in the mDNS service record (set it to `APP_PORT` if you change the port) |
 | `BASIC_AUTH_USER` | *(unset)* | With `BASIC_AUTH_PASSWORD`, require HTTP basic auth on every route except `/api/health` |
 | `BASIC_AUTH_PASSWORD` | *(unset)* | Password for basic auth (both vars must be set to enable) |
 | `DOCKSENTINEL_CLI_ENV_PASSTHROUGH` | *(unset)* | Comma-separated extra env var names to pass to CLI backends. By default only `PATH`/`HOME`/locale/proxy vars and `OPENAI_*`, `ANTHROPIC_*`, `CLAUDE_*`, `CODEX_*`, `GEMINI_*`, `GOOGLE_*`, `OLLAMA_*` reach the CLI — never the app's own secrets |
@@ -173,18 +173,18 @@ Backend wrappers live in `llm-backends/` and follow a stdin/stdout contract: rea
 ## API Endpoints
 
 ```
-GET    /api/health
-GET    /api/settings
-PUT    /api/settings
-POST   /api/settings/test-llm
+GET    /api/health                      # {"status": "ok", "runtime": {"runtime_status": "running"|"degraded"|..., ...}}
+GET    /api/settings                    # secrets masked as ********
+PUT    /api/settings                    # partial update; blank/masked secret = keep, null = clear
+POST   /api/settings/test-llm           # one-shot call using the SAVED settings (UI saves first)
 POST   /api/telegram/test
+GET    /api/ollama/models?base_url=     # list models on an Ollama host (http(s) only)
 
 GET    /api/sentinel/status
 POST   /api/sentinel/toggle
 POST   /api/sentinel/analyze-now
 
-GET    /api/events
-GET    /api/insights
+GET    /api/insights                    # analysis events; ?container=&classification=&start=&end=&sort=&limit=&offset=
 GET    /api/reports
 GET    /api/reports/{id}
 POST   /api/reports/generate
@@ -192,6 +192,8 @@ POST   /api/reports/generate
 GET    /api/issues
 GET    /api/issues/{id}
 PATCH  /api/issues/{id}
+POST   /api/issues/{id}/try-llm         # {"prompt": ..., "model"?, "base_url"?, "api_key"?, "transport"?, "cli_backend"?}
+                                        # a base_url override never receives the stored api_key
 
 GET    /api/exclusions
 POST   /api/exclusions
@@ -203,6 +205,8 @@ POST   /api/prompts/{key}/reset
 ```
 
 Request/response bodies are validated by Pydantic v2 schemas (see `app/schemas/`). Paginated list endpoints accept `limit` and `offset`.
+
+`GET /api/health` returns HTTP 200 with `status: "ok"` whenever the process is up (liveness); LLM/parse failures are reported in `runtime.runtime_status` (`degraded`) and `runtime.llm_failure_count`, not in the top-level `status`, so the Docker `HEALTHCHECK` only fails when the app is unreachable.
 
 ## Project Layout
 
@@ -329,4 +333,4 @@ No `LICENSE` file is currently committed. Until one is added, default copyright 
 - **Secrets are write-only.** `GET /api/settings` and the Settings page return `********` for `llm_api_key`/`telegram_token`; sending a blank or masked value on write keeps the stored secret.
 - **Cross-site writes are rejected.** State-changing requests whose `Origin`/`Referer` host differs from the app's host get `403`, so a malicious web page can't drive the API from the operator's browser.
 - **Telegram bot privacy:** for group chats, disable *privacy mode* in @BotFather or the bot won't receive your callbacks. 1:1 chats work out of the box.
-- **Fail-closed defaults:** a misconfigured LLM or Telegram returns a clear error envelope and the health endpoint reports `degraded` — it does not silently swallow failures.
+- **Fail-closed defaults:** a misconfigured LLM or Telegram returns a clear error envelope and the health endpoint reports `runtime.runtime_status: degraded` — it does not silently swallow failures.

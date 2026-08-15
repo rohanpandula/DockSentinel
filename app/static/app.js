@@ -1,10 +1,54 @@
-async function postJSON(url, payload = {}) {
+async function readJSONBody(response) {
+  // Error pages (HTML 500s, proxy errors) aren't JSON: surface the status instead
+  // of a SyntaxError.
+  const text = await response.text();
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch (_err) {
+    return { error: `HTTP ${response.status}` };
+  }
+}
+
+async function postJSON(url, payload = {}, method = "POST") {
   const response = await fetch(url, {
-    method: "POST",
+    method,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  return { ok: response.ok, data: await response.json() };
+  const data = await readJSONBody(response);
+  if (!response.ok && !(data && data.error)) data.error = `HTTP ${response.status}`;
+  return { ok: response.ok, status: response.status, data };
+}
+
+const SECRET_FIELDS = new Set(["llm_api_key", "telegram_token"]);
+const INTEGER_FIELDS = new Set([
+  "cli_timeout_seconds", "cli_max_retries", "nightly_hour", "nightly_minute",
+  "max_input_chars", "max_input_tokens", "reserved_output_tokens",
+  "alert_cooldown_minutes", "alert_rate_limit_count", "alert_rate_limit_window_seconds",
+  "llm_timeout_seconds", "llm_max_retries", "dedup_window_seconds",
+  "container_rate_limit_count", "container_rate_limit_window_seconds",
+  "keyword_flush_delay_lines", "chunk_coalesce_window_seconds",
+]);
+
+function collectSettingsForm(form) {
+  // Only non-empty values; secrets only when the operator actually typed one
+  // (blank means "keep the stored secret").
+  const payload = {};
+  if (!form) return payload;
+  for (const el of form.elements) {
+    if (!el.name || el.disabled) continue;
+    const value = (el.value || "").trim();
+    if (value === "") continue;
+    if (SECRET_FIELDS.has(el.name) && value === "********") continue;
+    if (INTEGER_FIELDS.has(el.name)) {
+      const n = Number(value);
+      if (!Number.isFinite(n)) continue;
+      payload[el.name] = n;
+    } else {
+      payload[el.name] = value;
+    }
+  }
+  return payload;
 }
 
 function setOutputState(el, state, text) {
@@ -19,10 +63,27 @@ function attachTestButton(buttonId, endpoint, labels) {
   const output = document.getElementById("settings-test-output");
   if (!button || !output) return;
 
+  const form = button.closest("form");
+
   button.addEventListener("click", async () => {
     button.disabled = true;
-    setOutputState(output, "pending", labels.pending);
     try {
+      // Test what's on screen, not what was saved last time: persist the form
+      // first, then run the test against the stored settings.
+      if (form) {
+        setOutputState(output, "pending", "Saving settings…");
+        const saved = await postJSON("/api/settings", collectSettingsForm(form), "PUT");
+        if (!saved.ok) {
+          const reason = (saved.data && saved.data.error) || `HTTP ${saved.status}`;
+          setOutputState(output, "error", `Settings not saved — ${typeof reason === "string" ? reason : JSON.stringify(reason)}`);
+          return;
+        }
+        // Secrets were stored; clear the inputs so a re-test doesn't resend them.
+        for (const el of form.elements) {
+          if (SECRET_FIELDS.has(el.name)) el.value = "";
+        }
+      }
+      setOutputState(output, "pending", `Saved, ${labels.pending.charAt(0).toLowerCase()}${labels.pending.slice(1)}`);
       const result = await postJSON(endpoint);
       if (result.ok) {
         setOutputState(output, "ok", labels.ok);

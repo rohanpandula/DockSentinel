@@ -304,7 +304,7 @@ def test_briefing_evidence_counts_container_events(app, container):
         assert "Container Restarts" in user_msg
         assert "- web: 2 exit(s)" in user_msg
         assert "- db: 1 exit(s)" in user_msg
-        assert "container=web classification=warning summary=slow" in user_msg
+        assert "container=web classification=warning alert_sent=False summary=slow" in user_msg
         # lifecycle rows are not fed into the generic Events list
         assert "summary=web die 137" not in user_msg
 
