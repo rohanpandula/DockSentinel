@@ -81,23 +81,25 @@ class AnalysisEventRepository:
             .first()
         )
 
-    def count_container_events(self, container_id: str, statuses: list[str], since: datetime) -> int:
+    def count_container_events(self, container_name: str, statuses: list[str], since: datetime) -> int:
         """Count container lifecycle events (status="container_event") for one
-        container whose docker status (die/oom/...) is in `statuses`."""
+        container NAME whose docker status (die/oom/...) is in `statuses`.
+        Keyed by name (not id): a container recreated by compose/`--rm` gets a
+        new id every time but keeps its name, and that is still one crash loop."""
         return AnalysisEvent.query.filter(
             and_(
-                AnalysisEvent.container_id == container_id,
+                AnalysisEvent.container_name == container_name,
                 AnalysisEvent.status == "container_event",
                 AnalysisEvent.matched_keywords.in_(statuses),
                 AnalysisEvent.created_at >= since,
             )
         ).count()
 
-    def find_recent_storm_alert(self, container_id: str, since: datetime) -> AnalysisEvent | None:
+    def find_recent_storm_alert(self, container_name: str, since: datetime) -> AnalysisEvent | None:
         return (
             AnalysisEvent.query.filter(
                 and_(
-                    AnalysisEvent.container_id == container_id,
+                    AnalysisEvent.container_name == container_name,
                     AnalysisEvent.status == "container_event",
                     AnalysisEvent.alert_sent.is_(True),
                     AnalysisEvent.created_at >= since,

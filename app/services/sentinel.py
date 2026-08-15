@@ -220,12 +220,12 @@ class SentinelService:
             return
         now = utcnow_naive()
         exits = self.event_repo.count_container_events(
-            event.container_id, list(self.STORM_STATUSES), now - timedelta(minutes=window_minutes)
+            event.container_name, list(self.STORM_STATUSES), now - timedelta(minutes=window_minutes)
         )
         if exits < threshold:
             return
         cooldown_since = now - timedelta(minutes=settings.alert_cooldown_minutes)
-        if self.event_repo.find_recent_storm_alert(event.container_id, cooldown_since) is not None:
+        if self.event_repo.find_recent_storm_alert(event.container_name, cooldown_since) is not None:
             event.alert_error = "restart storm alert suppressed by cooldown"
             return
         text = (
