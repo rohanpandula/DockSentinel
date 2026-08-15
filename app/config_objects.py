@@ -19,6 +19,7 @@ class LLMConfig:
     cli_backend: str
     cli_timeout_seconds: int
     cli_max_retries: int
+    extra_request_json: str = ""
 
     @classmethod
     def from_settings(cls, s: "Settings") -> "LLMConfig":
@@ -33,6 +34,7 @@ class LLMConfig:
             cli_backend=s.cli_backend,
             cli_timeout_seconds=s.cli_timeout_seconds,
             cli_max_retries=s.cli_max_retries,
+            extra_request_json=(getattr(s, "llm_extra_request_json", "") or ""),
         )
 
 

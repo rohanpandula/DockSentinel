@@ -354,8 +354,10 @@ class SentinelService:
         guard = self._prompt(PromptKey.JSON_OUTPUT_GUARD)
 
         messages = [
-            {"role": "system", "content": sentinel_system.content},
-            {"role": "system", "content": guard.content},
+            # One system message: many chat-template servers (llama.cpp, vLLM,
+            # mlx) reject a second system role with "System message must be at
+            # the beginning" — so the JSON guard is appended to the same block.
+            {"role": "system", "content": f"{sentinel_system.content}\n\n{guard.content}"},
             {
                 "role": "user",
                 # TODO(context): enrich with "Container image: X, Restart count: N,

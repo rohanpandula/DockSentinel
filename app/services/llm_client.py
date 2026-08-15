@@ -61,6 +61,17 @@ class LLMResult:
     usage: dict[str, Any]
 
 
+def _error_detail(response: 'httpx.Response') -> str:
+    try:
+        body = response.json()
+        err = body.get("error", body) if isinstance(body, dict) else body
+        if isinstance(err, dict):
+            return str(err.get("message") or err)[:300]
+        return str(err)[:300]
+    except Exception:
+        return (response.text or "")[:300]
+
+
 class LLMClient:
     def __init__(self, cli_runner: CLIBackendRunner | None = None) -> None:
         self.cli_runner = cli_runner
@@ -78,6 +89,7 @@ class LLMClient:
         max_retries: int,
         max_tokens: int,
         temperature: float = 0.1,
+        extra_body: dict[str, Any] | None = None,
     ) -> LLMResult:
         if transport == "cli":
             return self.chat_completion_cli(
@@ -91,6 +103,7 @@ class LLMClient:
             )
 
         return self.chat_completion(
+            extra_body=extra_body,
             base_url=base_url,
             api_key=api_key,
             model=model,
@@ -112,12 +125,14 @@ class LLMClient:
         max_retries: int,
         max_tokens: int,
         temperature: float = 0.1,
+        extra_body: dict[str, Any] | None = None,
     ) -> LLMResult:
         endpoint = f"{base_url.rstrip('/')}/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
+        headers = {"Content-Type": "application/json"}
+        if (api_key or "").strip():
+            headers["Authorization"] = f"Bearer {api_key.strip()}"
+        # (no Authorization header at all for keyless local servers — an empty
+        #  "Bearer " value is an illegal header and httpx refuses to send it)
         payload: dict[str, Any] = {
             "model": model,
             "messages": messages,
@@ -127,6 +142,9 @@ class LLMClient:
         use_json_mode = json_mode_supported(base_url, model) and wants_json(messages)
         if use_json_mode:
             payload["response_format"] = {"type": "json_object"}
+        if extra_body:
+            # Operator-supplied extras win (e.g. enable_thinking=false for Qwen servers).
+            payload.update(extra_body)
 
         backoff_seconds = 0.5
         last_error: str | None = None
@@ -155,12 +173,16 @@ class LLMClient:
                         backoff_seconds *= 2
                         continue
 
-                response.raise_for_status()
+                if response.status_code >= 400:
+                    # Surface the server's own explanation (e.g. "System message must be
+                    # at the beginning") instead of a bare "400 Bad Request".
+                    detail = _error_detail(response)
+                    raise RuntimeError(f"HTTP {response.status_code} from {endpoint}: {detail}")
                 data = response.json()
                 content = data["choices"][0]["message"]["content"]
                 usage = data.get("usage", {})
                 return LLMResult(content=content, model=data.get("model", model), latency_ms=latency_ms, usage=usage)
-            except (KeyError, IndexError, ValueError, httpx.HTTPError) as exc:
+            except (KeyError, IndexError, ValueError, httpx.HTTPError, RuntimeError) as exc:
                 last_error = str(exc)
                 if attempt < max_retries:
                     time.sleep(backoff_seconds)

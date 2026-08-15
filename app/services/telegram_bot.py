@@ -266,10 +266,10 @@ class TelegramBotService:
             system_prompt = "You are an SRE assistant helping triage Docker container issues."
 
         messages = [
-            {"role": "system", "content": system_prompt},
             {
                 "role": "system",
                 "content": (
+                    f"{system_prompt}\n\n"
                     "You are continuing a live discussion with an operator about a specific "
                     "container alert. Stay focused, give concrete actions, answer only what "
                     "is asked. Keep replies under 1200 characters."

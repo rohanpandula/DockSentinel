@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
+
 from datetime import datetime
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
 SECRET_FIELDS = ("llm_api_key", "telegram_token")
 MASK = "********"
@@ -12,7 +14,7 @@ MASK = "********"
 # Fields an operator may change through the API or web form. Anything else on
 # the Settings row (id, updated_at, ...) is server-managed.
 ALLOWED_SETTINGS_FIELDS = frozenset({
-    "llm_base_url", "llm_api_key", "llm_model", "llm_provider", "llm_transport",
+    "llm_base_url", "llm_api_key", "llm_model", "llm_provider", "llm_transport", "llm_extra_request_json",
     "cli_backend", "cli_timeout_seconds", "cli_max_retries",
     "telegram_token", "telegram_chat_id", "nightly_hour", "nightly_minute",
     "max_input_chars", "max_input_tokens", "reserved_output_tokens",
@@ -42,6 +44,7 @@ class SettingsSchema(BaseModel):
     llm_model: str | None = None
     llm_provider: str | None = None
     llm_transport: str | None = None
+    llm_extra_request_json: str | None = None
     cli_backend: str | None = None
     cli_timeout_seconds: int | None = None
     cli_max_retries: int | None = None
@@ -83,6 +86,7 @@ class UpdateSettingsBody(BaseModel):
     llm_model: str | None = None
     llm_provider: str | None = None
     llm_transport: str | None = None
+    llm_extra_request_json: str | None = None
     cli_backend: str | None = None
     cli_timeout_seconds: int | None = Field(default=None, ge=1)
     cli_max_retries: int | None = Field(default=None, ge=0)
@@ -109,6 +113,19 @@ class UpdateSettingsBody(BaseModel):
     chunk_coalesce_window_seconds: int | None = Field(default=None, ge=0)
     restart_alert_count: int | None = Field(default=None, ge=1)
     restart_alert_window_minutes: int | None = Field(default=None, ge=1)
+
+    @field_validator("llm_extra_request_json")
+    @classmethod
+    def _validate_extra_json(cls, value: str | None) -> str | None:
+        if value is None or value.strip() == "":
+            return value
+        try:
+            parsed = json.loads(value)
+        except ValueError as exc:
+            raise ValueError("llm_extra_request_json must be a JSON object") from exc
+        if not isinstance(parsed, dict):
+            raise ValueError("llm_extra_request_json must be a JSON object")
+        return value.strip()
 
 
 class TestLLMResponse(BaseModel):
