@@ -52,12 +52,14 @@ class BriefingService:
         counts = cls._restart_counts(events)
         if not counts:
             return "No container die/OOM events recorded in this window."
+        # Single pass: remember the most recent lifecycle event per container.
+        last_by_name: dict[str, AnalysisEvent] = {}
+        for e in events:
+            if e.status == "container_event":
+                last_by_name[e.container_name or "unknown"] = e
         lines = []
         for name, count in counts.most_common():
-            last = next(
-                (e for e in reversed(events) if e.status == "container_event" and (e.container_name or "unknown") == name),
-                None,
-            )
+            last = last_by_name.get(name)
             last_summary = f" (last: {last.summary})" if last is not None and last.summary else ""
             lines.append(f"- {name}: {count} exit(s){last_summary}")
         return "\n".join(lines)
