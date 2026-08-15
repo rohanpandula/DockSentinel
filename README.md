@@ -241,14 +241,11 @@ alembic.ini
 python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+alembic upgrade head          # creates ./data/docksentinel.db — required before the first run
 flask --app app run --debug
 ```
 
-SQLite lives at `./data/docksentinel.db` by default. Alembic runs on container startup (`alembic upgrade head`); for local dev run it manually after dependency changes:
-
-```bash
-alembic upgrade head
-```
+SQLite lives at `./data/docksentinel.db` by default. The Docker entrypoint runs `alembic upgrade head` on every start; for local dev you run it yourself — before the first `flask run` and again whenever you pull new migrations. (Tables are not auto-created outside `TESTING`.)
 
 ## Testing
 
