@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import re
 import signal
@@ -10,6 +11,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+LOGGER = logging.getLogger(__name__)
+
 # Environment handed to CLI backends. The prompt contains attacker-influenced
 # container logs and the CLIs are tool-capable agents, so they must not see the
 # app's own secrets (SECRET_KEY, DATABASE_URL, TELEGRAM_*, BASIC_AUTH_*, ...).
@@ -17,6 +20,7 @@ from pathlib import Path
 _ENV_PASSTHROUGH_EXACT = frozenset({
     "PATH", "HOME", "USER", "LOGNAME", "SHELL", "TERM", "LANG", "LC_ALL", "LC_CTYPE",
     "TMPDIR", "TZ", "NODE_OPTIONS", "NODE_PATH", "NO_COLOR",
+    "PYTHONPATH", "PYTHONUNBUFFERED", "VIRTUAL_ENV",
     # outbound-proxy / CA settings a homelab CLI may need to reach its API
     "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy",
     "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE", "NODE_EXTRA_CA_CERTS",
@@ -85,8 +89,11 @@ class CLIBackendRunner:
         except subprocess.TimeoutExpired:
             try:
                 os.killpg(proc.pid, signal.SIGKILL)
-            except (ProcessLookupError, PermissionError):
+            except ProcessLookupError:
                 pass
+            except PermissionError:
+                LOGGER.error("could not kill process group %s; killing wrapper only", proc.pid)
+                proc.kill()
             proc.wait(timeout=5)
             raise
         return subprocess.CompletedProcess([str(script)], proc.returncode, stdout, stderr)

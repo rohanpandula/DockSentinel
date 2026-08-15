@@ -278,7 +278,7 @@ class SentinelService:
             # A reply we can't parse is an LLM failure for health purposes:
             # otherwise a model that always fences its JSON leaves the runtime
             # "running" while no alert can ever fire.
-            self._record_llm_failure(f"unparseable LLM reply: {parse_error}")
+            self._record_llm_failure(f"unparseable LLM reply: {(parse_error or '')[:300]}")
             return event
 
         event.status = "analyzed"
