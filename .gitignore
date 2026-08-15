@@ -20,3 +20,4 @@ htmlcov/
 data/*.db
 data/*.db-journal
 data/runtime.lock
+data/*.lock
