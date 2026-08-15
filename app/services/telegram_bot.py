@@ -260,10 +260,11 @@ class TelegramBotService:
 
     def _ask_llm(self, issue: LocalIssue, user_message: str) -> str:
         settings = self.settings_repo.get()
-        try:
-            system_prompt = self.prompt_repo.get(PromptKey.SENTINEL_SYSTEM).content
-        except Exception:
-            system_prompt = "You are an SRE assistant helping triage Docker container issues."
+        template = self.prompt_repo.get_by_key(PromptKey.SENTINEL_SYSTEM)
+        system_prompt = (
+            template.content if template is not None and template.content
+            else "You are an SRE assistant helping triage Docker container issues."
+        )
 
         messages = [
             {

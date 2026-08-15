@@ -225,7 +225,7 @@ app/
   web/            Server-rendered routes
 llm-backends/     Pluggable CLI backend scripts (stdin → stdout)
 migrations/       Alembic migrations (SQLite-safe via batch mode)
-tests/            pytest suite (46 tests, 80% coverage gate)
+tests/            pytest suite (pytest suite, 80% coverage gate)
 Dockerfile
 docker-compose.yml            Default (local socket, host port 5050)
 docker-compose.unraid.example.yml  Reference for macvlan / LAN IP deploys
@@ -258,7 +258,7 @@ pytest                     # with coverage report (gated at 80%)
 pytest --cov-report=html   # browse htmlcov/index.html
 ```
 
-The suite (46 tests) covers:
+The suite (137+ tests) covers:
 - API endpoints (health, settings, sentinel, reports, issues, prompts, exclusions)
 - Request/response schema parity and pagination
 - Sentinel pipeline — critical path, cooldown dedup, chunk dedup, per-container rate limiting

@@ -189,3 +189,25 @@ def test_cli_backend_timeout_kills_child_process_group(tmp_path):
     time.sleep(0.2)
     with pytest.raises(ProcessLookupError):
         os.kill(child_pid, 0)  # child must be gone, not orphaned
+
+
+def test_bot_ask_llm_uses_sentinel_system_prompt(app, container, monkeypatch):
+    """Regression: prompt_repo.get() didn't exist so the bot silently used the fallback prompt."""
+    with app.app_context():
+        from app.models import PromptKey
+        tpl = container.prompt_repo.get_by_key(PromptKey.SENTINEL_SYSTEM)
+        tpl.content = "CUSTOM SYSTEM PROMPT"
+        db.session.commit()
+        bot = _bot(app, container, _Notifier())
+        seen = {}
+
+        class _R:
+            content = "answer"
+
+        monkeypatch.setattr(bot.llm_call_service, "call", lambda **kw: seen.update(kw) or _R())
+        issue = LocalIssue(container_name="c", title="t", body="b", action="discuss", status="discussing")
+        db.session.add(issue); db.session.commit()
+        assert bot._ask_llm(issue, "why?") == "answer"
+        assert seen["messages"][0]["role"] == "system"
+        assert seen["messages"][0]["content"].startswith("CUSTOM SYSTEM PROMPT")
+        assert sum(1 for m in seen["messages"] if m["role"] == "system") == 1
