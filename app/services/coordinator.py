@@ -220,6 +220,8 @@ class RuntimeCoordinator:
             else:
                 state.runtime_status = "stopped"
             state.last_error = None
+            # Dashboard labels this 'since last restart' — make that true.
+            state.llm_failure_count = 0
 
             def _line_callback(container_id: str, container_name: str, line: str, flush_only: bool) -> None:
                 with self.app.app_context():
