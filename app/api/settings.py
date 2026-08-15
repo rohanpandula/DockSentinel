@@ -28,9 +28,12 @@ def update_settings(body: UpdateSettingsBody):
         if key not in _ALLOWED_FIELDS:
             continue
         # Secrets are never echoed back (masked), so a masked/blank value on
-        # write means "keep the current secret" rather than overwrite it.
-        if key in SECRET_FIELDS and (value is None or value.strip() in {"", MASK}):
-            continue
+        # write means "keep the current secret". An explicit JSON null clears it.
+        if key in SECRET_FIELDS:
+            if value is None:
+                value = ""
+            elif value.strip() in {"", MASK}:
+                continue
         setattr(settings, key, value)
 
     services.settings_repo.save()

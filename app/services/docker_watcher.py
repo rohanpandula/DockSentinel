@@ -174,6 +174,7 @@ class DockerWatcher:
         """
         if self._client is None:
             return
+        errored = False
         try:
             since = int(time.time())
             backoff = 1.0
@@ -205,6 +206,7 @@ class DockerWatcher:
                         break
                     backoff = min(backoff * 2, 30.0)
         except Exception:
+            errored = True
             LOGGER.exception("log stream for container %s ended with error", container_name)
         finally:
             with self._lock:
@@ -215,7 +217,8 @@ class DockerWatcher:
                 self.line_callback(container_id, container_name, "", True)
             except Exception:
                 LOGGER.exception("final flush failed for container %s", container_name)
-            if not self._stop_event.is_set() and not stop_flag.is_set():
-                # Stream ended on its own (daemon hiccup, read timeout): ask the
-                # reconcile loop to re-attach promptly instead of waiting a full interval.
+            if errored and not self._stop_event.is_set() and not stop_flag.is_set():
+                # Stream died unexpectedly: ask the reconcile loop to re-attach
+                # promptly instead of waiting a full interval. A clean stop
+                # (container exited) is handled by the docker event stream.
                 self._reconcile_now.set()

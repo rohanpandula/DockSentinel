@@ -27,17 +27,37 @@ def _same_origin(header_value: str, host: str) -> bool:
     return bool(parsed.netloc) and parsed.netloc.lower() == host.lower()
 
 
+def _accepted_hosts() -> set[str]:
+    """Hosts a browser may legitimately name in Origin/Referer.
+
+    Behind a reverse proxy that rewrites ``Host`` (nginx ``proxy_set_header
+    Host $upstream``), the browser's Origin names the public host while
+    ``request.host`` is the upstream — so honour ``X-Forwarded-Host`` too.
+    """
+    hosts = {request.host.lower()}
+    forwarded = request.headers.get("X-Forwarded-Host", "")
+    for candidate in forwarded.split(","):
+        candidate = candidate.strip().lower()
+        if candidate:
+            hosts.add(candidate)
+    return hosts
+
+
+def _matches_any(header_value: str, hosts: set[str]) -> bool:
+    return any(_same_origin(header_value, h) for h in hosts)
+
+
 def _reject_cross_site_writes() -> None:
     if request.method in SAFE_METHODS:
         return
     origin = request.headers.get("Origin")
     referer = request.headers.get("Referer")
-    host = request.host
+    hosts = _accepted_hosts()
     if origin:
-        if origin == "null" or not _same_origin(origin, host):
+        if origin == "null" or not _matches_any(origin, hosts):
             abort(403, description="cross-site request rejected")
         return
-    if referer and not _same_origin(referer, host):
+    if referer and not _matches_any(referer, hosts):
         abort(403, description="cross-site request rejected")
 
 

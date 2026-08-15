@@ -81,6 +81,25 @@ def test_cross_site_post_rejected(client):
     assert r.status_code == 403
 
 
+def test_null_origin_rejected_and_forwarded_host_accepted(client):
+    r = client.put("/api/settings", json={"llm_model": "x"}, headers={"Origin": "null"})
+    assert r.status_code == 403
+    r = client.put(
+        "/api/settings",
+        json={"llm_model": "viaproxy"},
+        headers={"Origin": "https://sentinel.home.example", "X-Forwarded-Host": "sentinel.home.example"},
+    )
+    assert r.status_code == 200
+
+
+def test_explicit_null_clears_secret(client):
+    client.put("/api/settings", json={"telegram_token": "123:abc"})
+    r = client.put("/api/settings", json={"telegram_token": None})
+    assert r.status_code == 200
+    with client.application.app_context():
+        assert (Settings.singleton().telegram_token or "") == ""
+
+
 def test_same_origin_and_no_origin_posts_allowed(client):
     r = client.put("/api/settings", json={"llm_model": "ok1"}, headers={"Origin": "http://localhost"})
     assert r.status_code == 200

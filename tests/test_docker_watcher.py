@@ -60,7 +60,7 @@ def _run_tail(watcher: DockerWatcher, container: _FakeContainer) -> None:
     assert not thread.is_alive()
 
 
-def test_dead_stream_deregisters_worker_and_requests_reconcile():
+def test_dropped_stream_reconnects_then_deregisters_when_container_exits():
     lines = []
     container = _FakeContainer("c1", "web", [b"a\n", b"b\n"], fail_after=1)
     # Make the container "stop" after the first reconnect so the loop exits.
@@ -80,9 +80,27 @@ def test_dead_stream_deregisters_worker_and_requests_reconcile():
     _run_tail(watcher, container)
 
     assert "c1" not in watcher.active_container_ids()
-    assert watcher._reconcile_now.is_set()
+    assert calls["n"] == 2  # reconnected once after the drop
     assert ("a", False) in lines
     assert lines[-1] == ("", True)  # final flush
+
+
+def test_unexpected_exception_deregisters_and_requests_reconcile():
+    watcher = DockerWatcher(lambda *a: None, lambda n: False)
+
+    class _C:
+        def get(self, cid):
+            raise RuntimeError("daemon gone")
+
+    client = _Client(_FakeContainer("c9", "x", []))
+    client.containers = _C()
+    watcher._client = client
+    stop_flag = threading.Event()
+    with watcher._lock:
+        watcher._workers["c9"] = ("x", threading.current_thread(), stop_flag)
+    watcher._tail_container("c9", "x", stop_flag)
+    assert "c9" not in watcher.active_container_ids()
+    assert watcher._reconcile_now.is_set()
 
 
 def test_line_callback_exception_does_not_kill_stream():
