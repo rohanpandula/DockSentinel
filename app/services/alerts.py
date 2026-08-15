@@ -85,6 +85,14 @@ class AlertService:
         reply_markup = self._build_keyboard(event.id)
         return self.strategy.send(message, config, reply_markup=reply_markup)
 
+    def send_plain(self, text: str, config: AlertConfig) -> tuple[bool, Optional[str], Optional[int]]:
+        """Send a keyboard-less text alert through the same strategy, honouring
+        the global rate limit (but not the per-chunk cooldown). Does NOT commit."""
+        window_since = utcnow_naive() - timedelta(seconds=config.rate_limit_window_seconds)
+        if self.event_repo.count_recent_alerts(window_since) >= config.rate_limit_count:
+            return False, "global rate limit exceeded", None
+        return self.strategy.send(text, config, reply_markup=None)
+
     @staticmethod
     def _format_message(event: "AnalysisEvent") -> str:
         severity = (event.classification or "critical").upper()

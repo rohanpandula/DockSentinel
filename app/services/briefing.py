@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 from app.config_objects import LLMConfig
@@ -38,9 +38,35 @@ class BriefingService:
             raise RuntimeError(f"prompt not found for key {key.value}")
         return prompt
 
+    @staticmethod
+    def _restart_counts(events: list[AnalysisEvent]) -> Counter:
+        """Per-container count of die/oom lifecycle events in the window."""
+        return Counter(
+            e.container_name or "unknown"
+            for e in events
+            if e.status == "container_event" and (e.matched_keywords or "") in ("die", "oom")
+        )
+
+    @classmethod
+    def _restart_evidence(cls, events: list[AnalysisEvent]) -> str:
+        counts = cls._restart_counts(events)
+        if not counts:
+            return "No container die/OOM events recorded in this window."
+        lines = []
+        for name, count in counts.most_common():
+            last = next(
+                (e for e in reversed(events) if e.status == "container_event" and (e.container_name or "unknown") == name),
+                None,
+            )
+            last_summary = f" (last: {last.summary})" if last is not None and last.summary else ""
+            lines.append(f"- {name}: {count} exit(s){last_summary}")
+        return "\n".join(lines)
+
     def _fallback_report(self, events: list[AnalysisEvent], period_start: datetime, period_end: datetime) -> str:
-        classification_counts = Counter(e.classification or "unknown" for e in events)
-        container_counts = Counter(e.container_name or "unknown" for e in events)
+        analyzed = [e for e in events if e.status != "container_event"]
+        classification_counts = Counter(e.classification or "unknown" for e in analyzed)
+        container_counts = Counter(e.container_name or "unknown" for e in analyzed)
+        restart_lines = self._restart_evidence(events)
 
         top_containers = "\n".join(
             f"- {container}: {count} events" for container, count in container_counts.most_common(5)
@@ -51,14 +77,14 @@ class BriefingService:
         return (
             "## Executive Summary\n"
             f"- Period: {period_start.isoformat()} to {period_end.isoformat()}\n"
-            f"- Total analyzed events: {len(events)}\n\n"
+            f"- Total analyzed events: {len(analyzed)}\n\n"
             "## Critical Incidents\n"
             f"- Critical: {classification_counts.get('critical', 0)}\n\n"
             "## Warnings and Trends\n"
             f"- Warning: {classification_counts.get('warning', 0)}\n"
             f"- Noise: {classification_counts.get('noise', 0)}\n\n"
             "## Container Restarts\n"
-            "- Restart events are inferred from runtime logs in MVP.\n\n"
+            f"{restart_lines}\n\n"
             "## Recommended Actions (Next 24h)\n"
             "- Review critical events first, then tune exclusions and prompt templates.\n\n"
             "### Top Containers by Event Volume\n"
@@ -76,11 +102,13 @@ class BriefingService:
         nightly_system = self._prompt(PromptKey.NIGHTLY_SYSTEM)
         nightly_report = self._prompt(PromptKey.NIGHTLY_REPORT)
 
+        log_events = [e for e in events if e.status != "container_event"]
         evidence_lines = [
             f"- [{e.created_at.isoformat()}] container={e.container_name} classification={e.classification} summary={e.summary}"
-            for e in events[:500]
+            for e in log_events[:500]
         ]
         evidence = "\n".join(evidence_lines) if evidence_lines else "No events were recorded in this window."
+        restart_evidence = self._restart_evidence(events)
 
         messages = [
             {"role": "system", "content": nightly_system.content},
@@ -89,7 +117,8 @@ class BriefingService:
                 "content": (
                     f"{nightly_report.content}\n\n"
                     f"Time window UTC: {period_start.isoformat()} to {period_end.isoformat()}\n\n"
-                    f"Events:\n{evidence}"
+                    f"Events:\n{evidence}\n\n"
+                    f"Container Restarts (die/OOM events per container, from the docker event stream):\n{restart_evidence}"
                 ),
             },
         ]

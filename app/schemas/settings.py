@@ -22,6 +22,7 @@ ALLOWED_SETTINGS_FIELDS = frozenset({
     "container_rate_limit_count", "container_rate_limit_window_seconds",
     "keyword_flush_delay_lines", "chunk_coalesce_window_seconds",
     "alert_min_classification", "event_retention_days",
+    "restart_alert_count", "restart_alert_window_minutes",
 })
 
 
@@ -65,6 +66,8 @@ class SettingsSchema(BaseModel):
     container_rate_limit_window_seconds: int | None = None
     keyword_flush_delay_lines: int | None = None
     chunk_coalesce_window_seconds: int | None = None
+    restart_alert_count: int | None = None
+    restart_alert_window_minutes: int | None = None
     updated_at: datetime | None = None
 
     @field_serializer("llm_api_key", "telegram_token")
@@ -104,6 +107,8 @@ class UpdateSettingsBody(BaseModel):
     container_rate_limit_window_seconds: int | None = Field(default=None, ge=1)
     keyword_flush_delay_lines: int | None = Field(default=None, ge=0)
     chunk_coalesce_window_seconds: int | None = Field(default=None, ge=0)
+    restart_alert_count: int | None = Field(default=None, ge=1)
+    restart_alert_window_minutes: int | None = Field(default=None, ge=1)
 
 
 class TestLLMResponse(BaseModel):

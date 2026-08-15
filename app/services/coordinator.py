@@ -229,10 +229,15 @@ class RuntimeCoordinator:
                 with self.app.app_context():
                     return self.sentinel_service.is_excluded_container(container_name)
 
+            def _container_event(container_id: str, container_name: str, status: str, attrs: dict) -> None:
+                with self.app.app_context():
+                    self.sentinel_service.handle_container_event(container_id, container_name, status, attrs)
+
             self._watcher = DockerWatcher(
                 line_callback=_line_callback,
                 is_excluded_callback=_is_excluded,
                 reconcile_interval_seconds=60,
+                container_event_callback=_container_event,
             )
 
             try:

@@ -12,6 +12,13 @@ LOGGER = logging.getLogger(__name__)
 
 LineCallback = Callable[[str, str, str, bool], None]
 ExcludeCallback = Callable[[str], bool]
+# (container_id, container_name, status, attrs) — attrs is the raw Actor.Attributes
+# dict plus "exitCode" when docker supplied one.
+ContainerEventCallback = Callable[[str, str, str, dict], None]
+
+# Lifecycle statuses forwarded to container_event_callback. Docker emits
+# health changes as "health_status: unhealthy" / "health_status: healthy".
+CONTAINER_EVENT_STATUSES = frozenset({"die", "oom", "kill", "restart", "start", "health_status: unhealthy"})
 
 
 class DockerWatcher:
@@ -20,9 +27,11 @@ class DockerWatcher:
         line_callback: LineCallback,
         is_excluded_callback: ExcludeCallback,
         reconcile_interval_seconds: int = 60,
+        container_event_callback: ContainerEventCallback | None = None,
     ) -> None:
         self.line_callback = line_callback
         self.is_excluded_callback = is_excluded_callback
+        self.container_event_callback = container_event_callback
         self.reconcile_interval_seconds = reconcile_interval_seconds
 
         self._client: docker.DockerClient | None = None
@@ -100,6 +109,7 @@ class DockerWatcher:
                 container_name = actor.get("name")
                 if not container_id:
                     continue
+                self._dispatch_container_event(container_id, container_name, status, actor)
                 if status in {"start", "restart"}:
                     self._attach_container(container_id)
                 # `stop` is handled in addition to die/destroy to detach workers sooner.
@@ -109,6 +119,25 @@ class DockerWatcher:
             # Reconciliation loop keeps state accurate even if event stream fails.
             LOGGER.exception("docker event stream ended with error; relying on periodic reconcile")
             return
+
+    def _dispatch_container_event(
+        self, container_id: str, container_name: str | None, status: str | None, actor: dict
+    ) -> None:
+        """Forward lifecycle events (die/oom/kill/restart/start/unhealthy) to the
+        optional callback. Callback errors are logged and never kill the stream."""
+        if self.container_event_callback is None or status not in CONTAINER_EVENT_STATUSES:
+            return
+        attrs = dict(actor)
+        exit_code = actor.get("exitCode")
+        if exit_code is not None:
+            try:
+                attrs["exitCode"] = int(exit_code)
+            except (TypeError, ValueError):
+                attrs["exitCode"] = exit_code
+        try:
+            self.container_event_callback(container_id, container_name or container_id[:12], status, attrs)
+        except Exception:
+            LOGGER.exception("container event callback failed for %s (%s)", container_name, status)
 
     def _reconcile_loop(
         self,
