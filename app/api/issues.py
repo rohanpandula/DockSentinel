@@ -41,8 +41,13 @@ def list_ollama_models():
     loaded_names: set[str] = set()
     try:
         with httpx.Client(timeout=5) as client:
-            tags = client.get(f"{root}/api/tags").json()
-            ps = client.get(f"{root}/api/ps").json()
+            tags_resp = client.get(f"{root}/api/tags")
+            tags_resp.raise_for_status()
+            tags = tags_resp.json()
+            ps_resp = client.get(f"{root}/api/ps")
+            ps = ps_resp.json() if ps_resp.status_code == 200 else {}
+        if not isinstance(tags, dict) or "models" not in tags:
+            raise ValueError("not an Ollama /api/tags response")
         for m in (ps.get("models") or []):
             name = m.get("name")
             if name:

@@ -334,3 +334,33 @@ def test_nightly_job_skips_telegram_when_unconfigured_or_failed(tmp_path, monkey
     )
     coord._run_nightly_job()
     assert notifier.calls == []
+
+
+def test_analyze_now_forces_llm_even_without_keywords(app, container, monkeypatch):
+    """Manual 'Analyze now' promises to bypass the prefilter — a quiet log must still reach the LLM."""
+    import types
+    from app.models import SentinelState
+
+    class _R:
+        content = '{"classification":"noise","summary":"all quiet","root_cause_hypothesis":"n/a","fix_suggestion":"none","confidence":0.9}'
+        model = "m"
+        latency_ms = 1
+
+    class _Cont:
+        id = "abc"
+        name = "quiet"
+        def logs(self, **kw):
+            return b"INFO started\nINFO ready\n"
+
+    class _Client:
+        containers = types.SimpleNamespace(get=lambda name: _Cont())
+        def close(self):
+            pass
+
+    with app.app_context():
+        SentinelState.singleton()
+        monkeypatch.setattr("app.services.sentinel.docker.from_env", lambda: _Client())
+        monkeypatch.setattr(container.sentinel.llm_call_service, "call", lambda **kw: _R())
+        ev = container.sentinel.analyze_container_now("quiet")
+        assert ev.status == "analyzed", ev.status
+        assert ev.classification == "noise"

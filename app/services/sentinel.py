@@ -286,7 +286,10 @@ class SentinelService:
         container_name: str,
         chunk_text: str,
         coalesce: bool = True,
+        force: bool = False,
     ) -> AnalysisEvent:
+        """Analyse one chunk. ``force=True`` (manual "Analyze now") skips the
+        keyword prefilter and coalescing so the operator always gets an LLM verdict."""
         settings = self._settings()
         prefilter = self._prefilter()
         matched_keywords = prefilter.match(chunk_text)
@@ -302,7 +305,7 @@ class SentinelService:
             estimated_input_tokens=estimated_input_tokens,
         )
 
-        if not matched_keywords:
+        if not matched_keywords and not force:
             event.status = "skipped"
             event.classification = "noise"
             self.event_repo.add(event)
@@ -457,6 +460,7 @@ class SentinelService:
             container_name=container.name,
             chunk_text=chunk_text,
             coalesce=False,
+            force=True,
         )
 
     def flush_coalesced(
