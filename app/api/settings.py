@@ -59,4 +59,11 @@ def test_llm_connection():
     except Exception as exc:  # pragma: no cover - network dependent
         return TestLLMResponse(ok=False, error=str(exc)).model_dump(), 400
 
+    # Remember a verified LLM so the first-run checklist can tick honestly.
+    from app.models import SentinelState
+    from app.time_utils import utcnow_naive
+
+    state = SentinelState.singleton()
+    state.llm_last_test_ok_at = utcnow_naive()
+    services.settings_repo.save()
     return TestLLMResponse(ok=True).model_dump(), 200
