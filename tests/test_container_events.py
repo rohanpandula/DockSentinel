@@ -321,3 +321,29 @@ def test_briefing_fallback_lists_restarts(app, container):
         assert "- db: 1 exit(s)" in report.markdown_content
         assert "inferred" not in report.markdown_content
         assert "Total analyzed events: 1" in report.markdown_content
+
+
+def test_watcher_handles_docker29_events_without_legacy_fields():
+    """Docker 29 / API 1.52 events have only Action + Actor.ID (no top-level status/id)."""
+    from app.services.docker_watcher import DockerWatcher, _event_fields
+
+    ev = {"Type": "container", "Action": "die", "Actor": {"ID": "abc123", "Attributes": {"name": "web", "exitCode": "137"}}}
+    assert _event_fields(ev) == ("die", "abc123", {"name": "web", "exitCode": "137"})
+    legacy = {"Type": "container", "status": "start", "id": "zzz", "Action": "start", "Actor": {"ID": "zzz", "Attributes": {"name": "w"}}}
+    assert _event_fields(legacy)[:2] == ("start", "zzz")
+
+    seen = []
+    detached = []
+
+    class _Client:
+        def events(self, decode=True):
+            yield ev
+        def close(self):
+            pass
+
+    w = DockerWatcher(lambda *a: None, lambda n: False, container_event_callback=lambda cid, name, status, attrs: seen.append((cid, name, status, attrs.get("exitCode"))))
+    w._client = _Client()
+    w._detach_container = lambda cid, name: detached.append(cid)
+    w._watch_events()
+    assert seen == [("abc123", "web", "die", 137)]
+    assert detached == ["abc123"]

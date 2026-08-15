@@ -21,6 +21,21 @@ ContainerEventCallback = Callable[[str, str, str, dict], None]
 CONTAINER_EVENT_STATUSES = frozenset({"die", "oom", "kill", "restart", "start", "health_status: unhealthy"})
 
 
+def _event_fields(event: dict) -> tuple[str | None, str | None, dict]:
+    """Normalise a docker event across API versions.
+
+    Docker Engine 29 (API 1.52) dropped the legacy top-level ``status``/``id``
+    fields; only ``Action`` and ``Actor.ID`` remain. Older engines send both.
+    ``Action`` may carry a suffix ("exec_create: sh", "health_status: unhealthy")
+    which we keep so lifecycle statuses like "health_status: unhealthy" match.
+    """
+    actor_obj = event.get("Actor") or {}
+    attrs = actor_obj.get("Attributes") or {}
+    status = event.get("status") or event.get("Action")
+    container_id = event.get("id") or actor_obj.get("ID")
+    return status, container_id, attrs
+
+
 class DockerWatcher:
     def __init__(
         self,
@@ -107,9 +122,7 @@ class DockerWatcher:
                     break
                 if event.get("Type") != "container":
                     continue
-                status = event.get("status")
-                actor = event.get("Actor", {}).get("Attributes", {})
-                container_id = event.get("id")
+                status, container_id, actor = _event_fields(event)
                 container_name = actor.get("name")
                 if not container_id:
                     continue
