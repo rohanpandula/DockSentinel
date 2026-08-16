@@ -185,6 +185,19 @@ async function loadOllamaModels(root) {
   }
 }
 
+/* ── Journey 6: try another LLM → compare verdicts ───────────────────── */
+function runsKey(issueId) { return `ds-runs-${issueId}`; }
+function loadRuns(issueId) {
+  try { return JSON.parse(localStorage.getItem(runsKey(issueId)) || "[]"); } catch (_e) { return []; }
+}
+function saveRuns(issueId, runs) {
+  try { localStorage.setItem(runsKey(issueId), JSON.stringify(runs.slice(-30))); } catch (_e) { /* quota */ }
+}
+function fmtWhen(ts) {
+  const d = new Date(ts);
+  return `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
 function wireTryLLM() {
   const root = document.querySelector("[data-tryllm]");
   if (!root) return;
@@ -199,6 +212,13 @@ function wireTryLLM() {
   const modelSelect = root.querySelector("[data-tryllm-model-select]");
   const modelCustom = root.querySelector("[data-tryllm-model-custom]");
   const baseEl = root.querySelector('[data-tryllm-field="base_url"]');
+  const board = root.querySelector("[data-tryllm-board]");
+  const boardCount = root.querySelector("[data-tryllm-board-count]");
+  const runsBody = root.querySelector("[data-tryllm-runs] tbody");
+  const compareEl = root.querySelector("[data-tryllm-compare]");
+  const clearBtn = root.querySelector("[data-tryllm-clear]");
+  const overrides = root.querySelector("[data-tryllm-overrides]");
+  const overrideSummary = root.querySelector("[data-tryllm-override-summary]");
   if (!runBtn || !promptEl) return;
 
   loadOllamaModels(root);
@@ -215,16 +235,12 @@ function wireTryLLM() {
       const isCustom = modelSelect.value === "__custom__";
       modelCustom.hidden = !isCustom;
       if (isCustom) modelCustom.focus();
+      refreshOverrideSummary();
     });
   }
 
-  runBtn.addEventListener("click", async () => {
-    const prompt = (promptEl.value || "").trim();
-    if (!prompt) {
-      setOutputState(statusEl, "error", "Enter a prompt");
-      return;
-    }
-    const payload = { prompt };
+  function currentOverrides() {
+    const payload = {};
     root.querySelectorAll("[data-tryllm-field]").forEach((el) => {
       if (el === modelSelect) return; // handled below
       const v = (el.value || "").trim();
@@ -239,10 +255,93 @@ function wireTryLLM() {
         payload.model = picked;
       }
     }
+    return payload;
+  }
 
+  function refreshOverrideSummary() {
+    if (!overrideSummary) return;
+    const o = currentOverrides();
+    const parts = [];
+    if (o.model) parts.push(o.model);
+    if (o.transport) parts.push(o.transport);
+    if (o.cli_backend) parts.push(o.cli_backend);
+    if (o.base_url) parts.push("custom URL");
+    overrideSummary.textContent = parts.length ? `(${parts.join(" · ")})` : "(inheriting Settings)";
+  }
+  if (overrides) overrides.addEventListener("input", refreshOverrideSummary);
+  if (overrides) overrides.addEventListener("change", refreshOverrideSummary);
+
+  let pinned = [];
+  function renderBoard() {
+    if (!board || !runsBody) return;
+    const runs = loadRuns(issueId);
+    board.hidden = runs.length === 0;
+    if (clearBtn) clearBtn.hidden = runs.length === 0;
+    if (boardCount) boardCount.textContent = runs.length ? `(${runs.length})` : "";
+    runsBody.innerHTML = "";
+    [...runs].reverse().forEach((r) => {
+      const tr = document.createElement("tr");
+      if (pinned.includes(r.id)) tr.classList.add("is-pinned");
+      const ok = r.ok !== false;
+      tr.innerHTML = `
+        <td><input type="checkbox" aria-label="Pin run for comparison" ${pinned.includes(r.id) ? "checked" : ""}></td>
+        <td><span class="text-mono text-sm break">${escapeHtml(r.model || "?")}</span>${r.transport ? `<span class="text-tertiary text-xs"> · ${escapeHtml(r.transport)}</span>` : ""}${ok ? "" : ' <span class="badge badge--critical badge--no-dot">error</span>'}</td>
+        <td><span class="runs__prompt" title="${escapeHtml(r.prompt)}">${escapeHtml(r.prompt)}</span></td>
+        <td class="is-num text-mono text-sm">${r.latency_ms ? r.latency_ms + " ms" : "—"}</td>
+        <td class="text-tertiary text-xs text-mono">${fmtWhen(r.ts)}</td>
+        <td class="is-num"><span class="btn-row" style="justify-content:flex-end"><button type="button" class="btn btn--sm btn--ghost" data-run-show>show</button><button type="button" class="btn btn--sm btn--ghost" data-run-again title="Run the same prompt on the same model again">again</button></span></td>`;
+      tr.querySelector("input").addEventListener("change", (ev) => {
+        if (ev.target.checked) { pinned.push(r.id); if (pinned.length > 2) pinned = pinned.slice(-2); }
+        else pinned = pinned.filter((id) => id !== r.id);
+        syncPins(); // in place: re-rendering the table here would drop the row the user just clicked
+      });
+      tr.querySelector("[data-run-show]").addEventListener("click", () => showResult(r));
+      tr.querySelector("[data-run-again]").addEventListener("click", () => run(r.prompt, r.overrides || {}));
+      runsBody.appendChild(tr);
+    });
+    syncPins();
+  }
+
+  // Pin state only: rows keep their DOM nodes so a click never lands on a stale row.
+  function syncPins() {
+    const runs = loadRuns(issueId);
+    if (runsBody) {
+      [...runsBody.rows].forEach((tr, i) => {
+        const r = [...runs].reverse()[i];
+        if (!r) return;
+        const on = pinned.includes(r.id);
+        tr.classList.toggle("is-pinned", on);
+        const box = tr.querySelector("input");
+        if (box && box.checked !== on) box.checked = on;
+      });
+    }
+    if (!compareEl) return;
+    const cols = runs.filter((r) => pinned.includes(r.id));
+    compareEl.hidden = cols.length < 2;
+    compareEl.innerHTML = "";
+    cols.forEach((r) => {
+      const col = document.createElement("div");
+      col.className = "compare__col";
+      col.innerHTML = `<div class="compare__head"><span class="compare__model">${escapeHtml(r.model || "?")}</span><span class="text-tertiary text-xs text-mono">${r.latency_ms || "?"} ms · ${fmtWhen(r.ts)}</span></div><div class="compare__body"></div>`;
+      col.querySelector(".compare__body").textContent = r.content || r.error || "";
+      compareEl.appendChild(col);
+    });
+  }
+
+  function showResult(r) {
+    bodyEl.textContent = r.content || r.error || "(empty response)";
+    if (modelEl) modelEl.textContent = r.model || "unknown";
+    metaEl.textContent = `server ${r.latency_ms || "?"}ms${r.roundtrip ? ` · roundtrip ${r.roundtrip}ms` : ""} · ${fmtWhen(r.ts)}`;
+    resultEl.hidden = false;
+    resultEl.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+
+  async function run(prompt, ov) {
+    const payload = { prompt, ...ov };
     runBtn.disabled = true;
-    setOutputState(statusEl, "pending", "Calling LLM…");
+    setOutputState(statusEl, "pending", `Calling ${ov.model || "default model"}…`);
     const started = performance.now();
+    const rec = { id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, ts: Date.now(), prompt, overrides: ov, transport: ov.transport || "" };
     try {
       const resp = await fetch(`/api/issues/${issueId}/try-llm`, {
         method: "POST",
@@ -250,23 +349,231 @@ function wireTryLLM() {
         body: JSON.stringify(payload),
       });
       const data = await resp.json();
-      const roundtrip = Math.round(performance.now() - started);
+      rec.roundtrip = Math.round(performance.now() - started);
       if (resp.ok && data.ok) {
-        bodyEl.textContent = data.content || "(empty response)";
-        if (modelEl) modelEl.textContent = data.model || "unknown";
-        metaEl.textContent = `server ${data.latency_ms || "?"}ms · roundtrip ${roundtrip}ms`;
-        resultEl.hidden = false;
-        setOutputState(statusEl, "ok", "Done");
+        rec.ok = true; rec.content = data.content || ""; rec.model = data.model || ov.model || "unknown"; rec.latency_ms = data.latency_ms;
+        setOutputState(statusEl, "ok", "Done — added to runs below");
         loadOllamaModels(root); // refresh loaded-state
       } else {
-        setOutputState(statusEl, "error", (data && data.error) || `HTTP ${resp.status}`);
+        rec.ok = false; rec.error = (data && data.error) || `HTTP ${resp.status}`; rec.model = ov.model || "(default)";
+        setOutputState(statusEl, "error", rec.error);
       }
     } catch (err) {
-      setOutputState(statusEl, "error", err.message || String(err));
+      rec.ok = false; rec.error = err.message || String(err); rec.model = ov.model || "(default)";
+      setOutputState(statusEl, "error", rec.error);
     } finally {
       runBtn.disabled = false;
     }
+    const runs = loadRuns(issueId);
+    runs.push(rec);
+    saveRuns(issueId, runs);
+    showResult(rec);
+    renderBoard();
+  }
+
+  runBtn.addEventListener("click", () => {
+    const prompt = (promptEl.value || "").trim();
+    if (!prompt) {
+      setOutputState(statusEl, "error", "Enter a prompt");
+      return;
+    }
+    run(prompt, currentOverrides());
   });
+  if (clearBtn) clearBtn.addEventListener("click", () => { saveRuns(issueId, []); pinned = []; renderBoard(); resultEl.hidden = true; });
+
+  refreshOverrideSummary();
+  renderBoard();
+}
+
+function escapeHtml(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+/* ── Journey 1: "since I last looked" ────────────────────────────────── */
+const SEEN_KEY = "ds-last-seen";
+function wireSinceLastSeen() {
+  let last = 0;
+  try { last = Number(localStorage.getItem(SEEN_KEY) || 0); } catch (_e) { /* ignore */ }
+  const rows = [...document.querySelectorAll("[data-ts]")];
+  let fresh = 0;
+  if (last) {
+    rows.forEach((row) => {
+      const ts = Date.parse(row.dataset.ts + (row.dataset.ts.endsWith("Z") ? "" : "Z"));
+      if (ts && ts > last) {
+        fresh += 1;
+        row.classList.add("is-new");
+        const marker = row.querySelector("[data-new-marker]");
+        if (marker) marker.hidden = false;
+      }
+    });
+  }
+  const pill = document.querySelector("[data-since-pill]");
+  if (pill && last) {
+    const d = new Date(last);
+    pill.querySelector("[data-since-count]").textContent = String(fresh);
+    pill.querySelector("[data-since-label]").textContent = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    pill.hidden = false;
+  }
+  // Only the Now page advances the marker (glance path), after the operator has had a look.
+  if (document.querySelector("[data-recent-events]")) {
+    const stamp = () => { try { localStorage.setItem(SEEN_KEY, String(Date.now())); } catch (_e) { /* ignore */ } };
+    window.addEventListener("pagehide", stamp);
+    setTimeout(stamp, 8000);
+  }
+}
+
+/* ── Journey 4: guided setup ─────────────────────────────────────────── */
+function wireSetup() {
+  const root = document.querySelector("[data-setup]");
+  if (!root) return;
+  const panels = [...root.querySelectorAll("[data-setup-panel]")];
+  const tabs = [...root.querySelectorAll("[data-setup-tab]")];
+  const show = (n) => {
+    panels.forEach((p) => { p.hidden = p.dataset.setupPanel !== String(n); });
+    tabs.forEach((t) => {
+      const on = t.dataset.setupTab === String(n);
+      t.setAttribute("aria-selected", String(on));
+      t.closest(".stepper__step").classList.toggle("is-current", on);
+    });
+    root.dataset.step = String(n);
+  };
+  tabs.forEach((t) => t.addEventListener("click", () => show(t.dataset.setupTab)));
+  root.querySelectorAll("[data-setup-next]").forEach((b) => b.addEventListener("click", () => show(b.dataset.setupNext)));
+
+  // transport toggle
+  const llmForm = root.querySelector('[data-setup-form="llm"]');
+  if (llmForm) {
+    const transport = llmForm.querySelector('[name="llm_transport"]');
+    const sync = () => {
+      const cli = transport.value === "cli";
+      llmForm.querySelectorAll("[data-setup-api-only]").forEach((el) => { el.hidden = cli; });
+      llmForm.querySelectorAll("[data-setup-cli-only]").forEach((el) => { el.hidden = !cli; });
+    };
+    transport.addEventListener("change", sync);
+    sync();
+    // model suggestions from Ollama
+    const base = llmForm.querySelector('[name="llm_base_url"]');
+    const list = llmForm.querySelector("#setup-models");
+    const hint = llmForm.querySelector("[data-setup-models-hint]");
+    const loadModels = async () => {
+      if (!list) return;
+      const params = new URLSearchParams();
+      if (base && base.value.trim()) params.set("base_url", base.value.trim());
+      try {
+        const resp = await fetch(`/api/ollama/models?${params}`);
+        const data = await resp.json();
+        if (!resp.ok || !data.ok) { if (hint) hint.textContent = "Not an Ollama server (or unreachable) — type the model name."; return; }
+        list.innerHTML = "";
+        (data.models || []).forEach((m) => { const o = document.createElement("option"); o.value = m.name; list.appendChild(o); });
+        if (hint) hint.textContent = `${(data.models || []).length} Ollama models found — pick one from the list.`;
+      } catch (_e) { if (hint) hint.textContent = "Could not reach the model server yet."; }
+    };
+    loadModels();
+    if (base) { let t; base.addEventListener("input", () => { clearTimeout(t); t = setTimeout(loadModels, 500); }); }
+  }
+
+  const saveForm = async (form, statusEl) => {
+    setOutputState(statusEl, "pending", "Saving…");
+    const saved = await postJSON("/api/settings", collectSettingsForm(form), "PUT");
+    if (!saved.ok) {
+      const reason = (saved.data && saved.data.error) || `HTTP ${saved.status}`;
+      setOutputState(statusEl, "error", `Not saved — ${typeof reason === "string" ? reason : JSON.stringify(reason)}`);
+      return false;
+    }
+    for (const el of form.elements) if (SECRET_FIELDS.has(el.name)) el.value = "";
+    return true;
+  };
+
+  root.querySelectorAll("[data-setup-test]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const kind = btn.dataset.setupTest;
+      const form = root.querySelector(`[data-setup-form="${kind}"]`);
+      const statusEl = root.querySelector(`[data-setup-status="${kind}"]`);
+      btn.disabled = true;
+      try {
+        if (!(await saveForm(form, statusEl))) return;
+        setOutputState(statusEl, "pending", kind === "llm" ? "Saved. Asking the model for a pong…" : "Saved. Sending a Telegram message…");
+        const result = await postJSON(kind === "llm" ? "/api/settings/test-llm" : "/api/telegram/test");
+        if (result.ok) {
+          setOutputState(statusEl, "ok", kind === "llm" ? "LLM reachable — step done. Reloading…" : "Message delivered — check your phone. Reloading…");
+          toast(kind === "llm" ? "LLM reachable" : "Telegram message delivered", "ok");
+          setTimeout(() => { window.location.href = "/dashboard?setup=1"; }, 900);
+        } else {
+          const reason = (result.data && result.data.error) || "unknown error";
+          setOutputState(statusEl, "error", `${kind === "llm" ? "LLM test failed" : "Telegram test failed"} — ${reason}`);
+        }
+      } catch (err) {
+        setOutputState(statusEl, "error", err.message || String(err));
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  });
+
+  root.querySelectorAll("[data-setup-save]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const kind = btn.dataset.setupSave;
+      const form = root.querySelector(`[data-setup-form="${kind}"]`);
+      const statusEl = root.querySelector(`[data-setup-status="${kind}"]`);
+      btn.disabled = true;
+      try {
+        if (await saveForm(form, statusEl)) setOutputState(statusEl, "ok", "Saved. Now send /start to the bot and press Detect.");
+      } finally { btn.disabled = false; }
+    });
+  });
+
+  const detect = root.querySelector("[data-setup-detect]");
+  if (detect) {
+    detect.addEventListener("click", async () => {
+      const hint = root.querySelector("[data-setup-detect-hint]");
+      const input = root.querySelector('[name="telegram_chat_id"]');
+      detect.disabled = true;
+      try {
+        const resp = await fetch("/api/telegram/detect-chat");
+        const data = await readJSONBody(resp);
+        if (resp.ok && data.ok) {
+          input.value = data.chat_id;
+          if (hint) hint.textContent = `Detected ${data.title || data.type || "chat"} · ${data.chat_id}. Press “Save & send test message”.`;
+          input.focus();
+        } else if (hint) {
+          hint.textContent = (data && data.error) || `HTTP ${resp.status}`;
+        }
+      } catch (err) { if (hint) hint.textContent = err.message || String(err); }
+      finally { detect.disabled = false; }
+    });
+  }
+}
+
+/* ── Prompt studio: tabs, dirty flag, stats ──────────────────────────── */
+function wirePromptStudio() {
+  const form = document.querySelector("[data-prompt-editor]");
+  if (!form) return;
+  const text = form.querySelector("[data-prompt-text]");
+  const def = form.querySelector("[data-prompt-default]");
+  const panes = form.querySelector("[data-prompt-panes]");
+  const dirty = form.querySelector("[data-prompt-dirty]");
+  const stats = form.querySelector("[data-prompt-stats]");
+  const original = text.value;
+  const defaultText = def ? def.textContent : "";
+  const update = () => {
+    const v = text.value;
+    if (dirty) dirty.hidden = v === original;
+    if (stats) stats.textContent = `${v.length} chars · ${v.split("\n").length} lines${v.trim() === defaultText.trim() ? " · matches default" : ""}`;
+  };
+  text.addEventListener("input", update);
+  update();
+  form.querySelectorAll("[data-prompt-tab]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const mode = btn.dataset.promptTab;
+      form.querySelectorAll("[data-prompt-tab]").forEach((b) => { const on = b === btn; b.classList.toggle("chip--active", on); b.setAttribute("aria-selected", String(on)); });
+      panes.classList.toggle("prompt-panes--side", mode === "side");
+      form.querySelectorAll("[data-prompt-pane]").forEach((p) => { p.hidden = mode !== "side" && p.dataset.promptPane !== mode; });
+    });
+  });
+  const copy = form.querySelector("[data-prompt-copy-default]");
+  if (copy) copy.addEventListener("click", () => { text.value = defaultText; update(); text.focus(); });
+  window.addEventListener("beforeunload", (e) => { if (dirty && !dirty.hidden && !form.dataset.submitting) { e.preventDefault(); e.returnValue = ""; } });
+  form.addEventListener("submit", () => { form.dataset.submitting = "1"; });
 }
 
 
@@ -297,12 +604,13 @@ function wireThemeToggle() {
 
 function wireNavDrawer() {
   const shell = document.getElementById("shell");
-  const toggle = document.querySelector("[data-nav-toggle]");
+  const toggles = [...document.querySelectorAll("[data-nav-toggle]")];
+  const toggle = toggles[0];
   if (!shell || !toggle) return;
   const closers = document.querySelectorAll("[data-nav-close]");
   const setOpen = (open) => {
     shell.classList.toggle("nav-open", open);
-    toggle.setAttribute("aria-expanded", String(open));
+    toggles.forEach((t) => t.setAttribute("aria-expanded", String(open)));
     document.body.style.overflow = open ? "hidden" : "";
     if (open) {
       const first = shell.querySelector(".sidebar .nav__link");
@@ -311,7 +619,7 @@ function wireNavDrawer() {
       toggle.focus({ preventScroll: true });
     }
   };
-  toggle.addEventListener("click", () => setOpen(!shell.classList.contains("nav-open")));
+  toggles.forEach((t) => t.addEventListener("click", () => setOpen(!shell.classList.contains("nav-open"))));
   closers.forEach((el) => {
     el.hidden = false;
     el.addEventListener("click", () => setOpen(false));
@@ -363,6 +671,9 @@ window.addEventListener("DOMContentLoaded", () => {
   wireSectionNav();
   wireAnalyzeForm();
   wireTryLLM();
+  wireSinceLastSeen();
+  wireSetup();
+  wirePromptStudio();
   attachTestButton("btn-test-llm", "/api/settings/test-llm", {
     pending: "Testing LLM connection…",
     ok: "LLM reachable",

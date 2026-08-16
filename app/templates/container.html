@@ -177,7 +177,9 @@
         </a></li>
         {% endfor %}
       </ul>
-      <p class="text-tertiary text-xs mt-3">A <b>rejected</b> issue silences this container's alerts for 24 h.</p>
+      {% if issues|selectattr('status', 'equalto', 'rejected')|list %}
+      <p class="text-tertiary text-xs mt-3">A <b>rejected</b> issue silences this container's alerts for 24 h after it was rejected.</p>
+      {% endif %}
       {% else %}
       <p class="text-secondary text-sm">None. Approve / Reject / Discuss an alert in Telegram to open one.</p>
       {% endif %}

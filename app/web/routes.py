@@ -148,7 +148,10 @@ def dashboard():
             if event.alert_sent:
                 counts["alerted"] += 1
             elif event.classification in {"critical", "warning"}:
-                attention.append({"event": event, "outcome": alert_outcome(event, settings)})
+                outcome = alert_outcome(event, settings)
+                # Warnings under the chosen threshold are by design, not "attention".
+                if outcome["kind"] != "below" or event.classification == "critical":
+                    attention.append({"event": event, "outcome": outcome})
         elif event.status in {"parse_error", "llm_error"}:
             counts["errors"] += 1
         elif event.status in SKIPPED_STATUSES:
@@ -156,7 +159,6 @@ def dashboard():
         elif event.status == "container_event" and event.alert_sent:
             counts["alerted"] += 1
         # container_event rows (die/oom/restart) are lifecycle signals, not chunks — not counted here.
-    attention.sort(key=lambda a: (-classification_rank(a["event"].classification), a["event"].created_at or now), reverse=False)
     attention = sorted(attention, key=lambda a: (-classification_rank(a["event"].classification), -(a["event"].created_at or now).timestamp()))[:8]
 
     mutes = container.mute_repo.list_active(now)
