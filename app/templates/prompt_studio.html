@@ -1,55 +1,101 @@
 {% extends "base.html" %}
 {% block title %}DockSentinel — Prompts{% endblock %}
 {% block content %}
+{% set roles = {
+  'SENTINEL_SYSTEM': ('Triage · system', 'Persona and rules for every log-chunk verdict.'),
+  'SENTINEL_ANALYSIS': ('Triage · task', 'The instruction sent with each chunk. Drives classification, root cause and fix.'),
+  'JSON_OUTPUT_GUARD': ('Triage · output guard', 'Appended to the system message to force strict verdict JSON.'),
+  'NIGHTLY_SYSTEM': ('Report · system', 'Persona for the nightly briefing.'),
+  'NIGHTLY_REPORT': ('Report · task', 'How the day’s events are summarised into the briefing.'),
+} %}
 <div class="page-head">
   <div>
-    <h1 class="page-head__title">Prompts</h1>
-    <p class="page-head__sub">Versioned prompt templates used by the triage pipeline and the nightly report. Edits apply on the next LLM call.</p>
+    <h1 class="page-head__title">Prompt studio</h1>
+    <p class="page-head__sub">Versioned prompt templates for the triage pipeline and the nightly report. Edits apply on the next LLM call; the default is always one click away.</p>
   </div>
-  <form method="get" class="page-head__actions" aria-label="Choose prompt">
-    <label class="field" style="min-width: 260px;">
-      <span class="sr-only">Prompt key</span>
-      <select class="select mono" name="key" onchange="this.form.submit()" aria-label="Prompt key">
-        {% for prompt in prompts %}
-          <option value="{{ prompt.key }}" {% if selected_prompt and prompt.key == selected_prompt.key %}selected{% endif %}>{{ prompt.key }}</option>
-        {% endfor %}
-      </select>
-    </label>
-    <noscript><button class="btn">Open</button></noscript>
-  </form>
+  <div class="page-head__actions">
+    {% if latest_issue %}
+    <a class="btn" href="{{ url_for('issues_page', id=latest_issue.id) }}#tryllm-title" title="Compare models on issue #{{ latest_issue.id }}"><svg aria-hidden="true"><use href="#ico-compare"/></svg>Compare models on an issue</a>
+    {% endif %}
+  </div>
 </div>
 
-<section class="card card--pad" aria-label="Prompt editor">
-  {% if selected_prompt %}
-    <form method="post" class="stack">
-      <input type="hidden" name="key" value="{{ selected_prompt.key }}" />
-      <div class="card__head">
-        <div>
-          <h2 class="card__title text-mono">{{ selected_prompt.key }}</h2>
-          <p class="text-tertiary text-sm mt-1">Version <span class="tabular text-secondary">{{ selected_prompt.version }}</span></p>
-        </div>
-        {% if selected_prompt.is_default %}
-          <span class="badge badge--neutral badge--no-dot">default</span>
-        {% else %}
-          <span class="badge badge--accent badge--no-dot">customised</span>
-        {% endif %}
-      </div>
-      <label class="field">
-        <span class="sr-only">Prompt content</span>
-        <textarea class="textarea mono" name="content" rows="18" spellcheck="false" style="min-height: 360px; font-size: 12.5px;">{{ selected_prompt.content }}</textarea>
-        <span class="field__help">Saving bumps the version. “Restore default” replaces the content with the built-in template.</span>
-      </label>
-      <div class="btn-row">
-        <button class="btn btn--primary" name="action" value="save">Save</button>
-        <button class="btn" name="action" value="reset" {% if selected_prompt.is_default %}disabled{% endif %}>Restore default</button>
-      </div>
-    </form>
-  {% else %}
-    <div class="empty">
-      <div class="empty__icon"><svg aria-hidden="true"><use href="#ico-prompt"/></svg></div>
-      <p class="empty__title">Pick a prompt to edit</p>
-      <p>Choose a prompt key from the selector above.</p>
+<div class="split split--narrow">
+  <section class="card" aria-label="Prompt templates">
+    <div class="card__head">
+      <h2 class="card__title">Templates</h2>
+      <span class="text-tertiary text-xs">{{ prompts|length }}</span>
     </div>
-  {% endif %}
-</section>
+    <ul class="list-reset">
+      {% for prompt in prompts %}
+        {% set is_selected = selected_prompt and prompt.key == selected_prompt.key %}
+        {% set r = roles.get(prompt.key, (prompt.key, '')) %}
+        <li>
+          <a class="row-link {% if is_selected %}row-link--active{% endif %}" {% if is_selected %}aria-current="true"{% endif %} href="{{ url_for('prompt_studio_page', key=prompt.key) }}">
+            <span class="row-link__title">
+              <span class="row-link__meta">{{ prompt.key }} · v{{ prompt.version }}</span>
+              {{ r[0] }}
+            </span>
+            {% if prompt.is_default %}<span class="badge badge--neutral badge--no-dot">default</span>{% else %}<span class="badge badge--accent badge--no-dot">custom</span>{% endif %}
+          </a>
+        </li>
+      {% endfor %}
+    </ul>
+    <div class="card__foot text-tertiary text-xs">Pipeline order: system + output guard → task + logs. Report: system → task + day summary.</div>
+  </section>
+
+  <section class="card card--pad" aria-label="Prompt editor">
+    {% if selected_prompt %}
+      {% set r = roles.get(selected_prompt.key, (selected_prompt.key, '')) %}
+      <form method="post" class="stack" data-prompt-editor>
+        <input type="hidden" name="key" value="{{ selected_prompt.key }}" />
+        <div class="card__head">
+          <div>
+            <h2 class="card__title">{{ r[0] }} <span class="text-mono text-tertiary text-sm">{{ selected_prompt.key }}</span></h2>
+            <p class="text-tertiary text-sm mt-1">{{ r[1] }} · version <span class="tabular text-secondary">{{ selected_prompt.version }}</span></p>
+          </div>
+          <span class="row">
+            {% if selected_prompt.is_default %}
+              <span class="badge badge--neutral badge--no-dot">default</span>
+            {% else %}
+              <span class="badge badge--accent badge--no-dot">customised</span>
+            {% endif %}
+            <span class="badge badge--warning badge--no-dot" data-prompt-dirty hidden>unsaved</span>
+          </span>
+        </div>
+
+        <div class="prompt-tabs" role="tablist">
+          <button type="button" class="chip chip--active" data-prompt-tab="edit" role="tab" aria-selected="true">Edit</button>
+          <button type="button" class="chip" data-prompt-tab="default" role="tab" aria-selected="false">Built-in default</button>
+          <button type="button" class="chip" data-prompt-tab="side" role="tab" aria-selected="false">Side by side</button>
+          <span class="flex-1"></span>
+          <span class="text-tertiary text-xs tabular" data-prompt-stats></span>
+        </div>
+
+        <div class="prompt-panes" data-prompt-panes>
+          <label class="field prompt-pane" data-prompt-pane="edit">
+            <span class="sr-only">Prompt content</span>
+            <textarea class="textarea mono" name="content" rows="18" spellcheck="false" style="min-height: 360px; font-size: 12.5px;" data-prompt-text>{{ selected_prompt.content }}</textarea>
+          </label>
+          <div class="prompt-pane" data-prompt-pane="default" hidden>
+            <pre class="code-block prompt-default" data-prompt-default>{{ selected_prompt.default_content }}</pre>
+          </div>
+        </div>
+        <span class="field__help">Saving bumps the version. “Restore default” replaces the content with the built-in template. Placeholders such as container name and logs are injected by the pipeline, not by the template.</span>
+
+        <div class="btn-row">
+          <button class="btn btn--primary" name="action" value="save">Save</button>
+          <button class="btn" name="action" value="reset" {% if selected_prompt.is_default %}disabled{% endif %}>Restore default</button>
+          <button type="button" class="btn btn--ghost" data-prompt-copy-default {% if selected_prompt.is_default %}disabled{% endif %}>Copy default into editor</button>
+        </div>
+      </form>
+    {% else %}
+      <div class="empty">
+        <div class="empty__icon"><svg aria-hidden="true"><use href="#ico-prompt"/></svg></div>
+        <p class="empty__title">Pick a prompt to edit</p>
+        <p>Choose a template from the list.</p>
+      </div>
+    {% endif %}
+  </section>
+</div>
 {% endblock %}

@@ -130,7 +130,8 @@ def test_format_message_is_compact():
     excerpt = text.split("LOG EXCERPT\n")[1].splitlines()[:-1]
     assert len(excerpt) == 3 and all(len(ln) <= 120 for ln in excerpt)
     assert "line9 " in text and "line6 " not in text
-    assert lines[-1] == "Confidence: 0.82 · Event ID: 123 · Dashboard: /insights?container=web"
+    # The dashboard link deep-links the event so the UI opens it in the spotlight view.
+    assert lines[-1] == "Confidence: 0.82 · Event ID: 123 · Dashboard: /insights?container=web&event=123"
 
 
 # ── API ────────────────────────────────────────────────────────

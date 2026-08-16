@@ -1,10 +1,11 @@
 {% extends "base.html" %}
+{% from "_macros.html" import container_link %}
 {% block title %}DockSentinel — Reports{% endblock %}
 {% block content %}
 <div class="page-head">
   <div>
-    <h1 class="page-head__title">Reports</h1>
-    <p class="page-head__sub">Nightly health briefings generated from the day's classified events.</p>
+    <h1 class="page-head__title">Reports &amp; weekly review</h1>
+    <p class="page-head__sub">Nightly health briefings, plus the week's numbers so you can review issues and tune noise in one sitting.</p>
   </div>
   <div class="page-head__actions">
     <form method="post" action="{{ url_for('reports_generate') }}">
@@ -13,7 +14,32 @@
   </div>
 </div>
 
-<div class="split split--narrow">
+<!-- ── J5: this week strip ────────────────────────────────────────────────── -->
+<section class="card card--pad review" aria-labelledby="review-title">
+  <div class="card__head">
+    <h2 class="card__title" id="review-title">Last 7 days</h2>
+    <span class="text-tertiary text-xs">{{ week.chunks }} chunks through the pipeline</span>
+  </div>
+  <div class="review__grid">
+    <a class="review__tile" href="{{ url_for('insights_page', outcome='alerted') }}"><b class="tabular text-ok">{{ week.alerts }}</b><span>alerts sent</span></a>
+    <a class="review__tile" href="{{ url_for('insights_page', classification='critical') }}"><b class="tabular text-critical">{{ week.critical }}</b><span>critical verdicts</span></a>
+    <a class="review__tile" href="{{ url_for('insights_page', classification='warning') }}"><b class="tabular text-warning">{{ week.warning }}</b><span>warning verdicts</span></a>
+    <a class="review__tile" href="{{ url_for('insights_page', outcome='suppressed') }}"><b class="tabular">{{ week.suppressed }}</b><span>alerts held back</span></a>
+    <a class="review__tile" href="{{ url_for('issues_page', status='open') }}"><b class="tabular">{{ issue_counts.get('open', 0) }}</b><span>open issues</span></a>
+    <a class="review__tile" href="{{ url_for('issues_page', status='discussing') }}"><b class="tabular">{{ issue_counts.get('discussing', 0) }}</b><span>discussing</span></a>
+  </div>
+  <div class="review__foot">
+    <span class="text-sm text-secondary">
+      {% if noisiest %}Noisiest before the LLM: {% for name, n in noisiest %}{{ container_link(name, 'text-mono') }} <span class="text-tertiary tabular">{{ n }}</span>{% if not loop.last %} · {% endif %}{% endfor %}{% else %}No prefilter noise recorded this week.{% endif %}
+    </span>
+    <span class="btn-row">
+      <a class="btn btn--sm" href="{{ url_for('issues_page', status='open') }}">Triage open issues</a>
+      <a class="btn btn--sm btn--ghost" href="{{ url_for('settings_page') }}#limits">Tune noise knobs</a>
+    </span>
+  </div>
+</section>
+
+<div class="split split--narrow mt-4">
   <section class="card" aria-label="Report archive">
     <div class="card__head">
       <h2 class="card__title">Archive</h2>
@@ -40,7 +66,7 @@
           <div class="empty empty--compact">
             <div class="empty__icon"><svg aria-hidden="true"><use href="#ico-doc"/></svg></div>
             <p class="empty__title">No reports yet</p>
-            <p>The scheduler writes one each night. You can also generate one right now.</p>
+            <p>The scheduler writes one each night at {{ '%02d:%02d' % (settings.nightly_hour, settings.nightly_minute) }}. You can also generate one right now.</p>
             <form method="post" action="{{ url_for('reports_generate') }}">
               <button class="btn btn--primary btn--sm">Generate now</button>
             </form>
@@ -67,7 +93,7 @@
       <div class="meta-strip mt-4">
         <span><span class="eyebrow">Model</span> <span class="text-mono">{{ selected_report.model or '—' }}</span></span>
         <span class="text-tertiary">·</span>
-        <span><span class="eyebrow">Prompt</span> v{{ selected_report.prompt_version }}</span>
+        <span><span class="eyebrow">Prompt</span> v{{ selected_report.prompt_version }} <a class="text-sm" href="{{ url_for('prompt_studio_page', key='NIGHTLY_REPORT') }}">edit</a></span>
       </div>
 
       {% if selected_report.status == 'llm_error' %}

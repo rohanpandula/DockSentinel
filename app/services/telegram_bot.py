@@ -68,6 +68,10 @@ class TelegramBotService:
         self._thread: Optional[threading.Thread] = None
         self._stop = threading.Event()
         self._offset = 0
+        # Most recent chat that messaged the bot (authorised or not). The setup
+        # wizard reads this so the operator can discover their chat id by simply
+        # sending /start to the bot — no second getUpdates consumer needed.
+        self.last_seen_chat: Optional[dict[str, Any]] = None
 
     def start(self) -> None:
         if self._thread is not None and self._thread.is_alive():
@@ -121,12 +125,26 @@ class TelegramBotService:
             msg = update.get("message") or {}
         return str((msg.get("chat") or {}).get("id", "")).strip()
 
+    def _remember_chat(self, update: dict[str, Any], chat_id: str) -> None:
+        if not chat_id:
+            return
+        msg = update.get("message") or ((update.get("callback_query") or {}).get("message") or {})
+        chat = msg.get("chat") or {}
+        sender = (update.get("message") or {}).get("from") or {}
+        self.last_seen_chat = {
+            "chat_id": chat_id,
+            "type": chat.get("type"),
+            "title": chat.get("title") or chat.get("username") or sender.get("username") or sender.get("first_name"),
+            "seen_at": utcnow_naive().isoformat(),
+        }
+
     def _dispatch(self, update: dict[str, Any], token: str) -> None:
         # Only the configured operator chat may drive the bot. Anyone can find
         # a bot by username and DM it; without this check a stranger could
         # attach to an issue thread and receive log excerpts + LLM answers.
         allowed = self._allowed_chat_id()
         chat_id = self._update_chat_id(update)
+        self._remember_chat(update, chat_id)
         if not allowed or chat_id != allowed:
             logger.warning("telegram update from unauthorised chat %r ignored", chat_id)
             return

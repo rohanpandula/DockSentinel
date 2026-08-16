@@ -1,11 +1,13 @@
 {% extends "base.html" %}
+{% from "_macros.html" import container_link %}
 {% block title %}DockSentinel — Exclusions{% endblock %}
 {% block content %}
 <div class="page-head">
   <div>
     <h1 class="page-head__title">Exclusions</h1>
-    <p class="page-head__sub">Container name patterns the sentinel should never attach to. Glob-style: <code class="text-sm">nginx-*</code>, <code class="text-sm">watchtower</code>.</p>
+    <p class="page-head__sub">Containers the sentinel should never read. A rule matches when its text appears anywhere in the container name (case-insensitive): <code class="text-sm">nginx</code>, <code class="text-sm">watchtower</code>. Prefer a <b>mute</b> if you still want verdicts recorded.</p>
   </div>
+  <a class="btn btn--ghost" href="{{ url_for('settings_page') }}#silences">Mutes<svg aria-hidden="true"><use href="#ico-arrow"/></svg></a>
 </div>
 
 <div class="stack">
@@ -13,7 +15,8 @@
     <label class="field">
       <span class="field__label">New pattern</span>
       <div class="input-row">
-        <input class="input mono" id="container_pattern" name="container_pattern" placeholder="e.g. nginx-* or watchtower" required />
+        <input class="input mono" id="container_pattern" name="container_pattern" placeholder="e.g. nginx or watchtower" required list="known-containers" />
+        <datalist id="known-containers">{% for n in known %}<option value="{{ n }}"></option>{% endfor %}</datalist>
         <button class="btn btn--primary">Add pattern</button>
       </div>
       <span class="field__help">Takes effect immediately; already-attached containers matching the pattern are detached.</span>
@@ -30,7 +33,8 @@
         <thead>
           <tr>
             <th>Pattern</th>
-            <th style="width: 120px;">Enabled</th>
+            <th>Currently matches</th>
+            <th style="width: 100px;">Enabled</th>
             <th style="width: 110px;" class="is-num">Actions</th>
           </tr>
         </thead>
@@ -38,6 +42,11 @@
           {% for rule in exclusions %}
             <tr>
               <td class="table__container">{{ rule.container_pattern }}</td>
+              <td class="text-sm">
+                {% set m = matches.get(rule.id, []) %}
+                {% if m %}{% for n in m[:6] %}{{ container_link(n, 'text-mono') }}{% if not loop.last %}, {% endif %}{% endfor %}{% if m|length > 6 %} <span class="text-tertiary">+{{ m|length - 6 }}</span>{% endif %}
+                {% else %}<span class="text-tertiary">no known container matches</span>{% endif %}
+              </td>
               <td>
                 {% if rule.enabled %}
                   <span class="badge badge--ok">on</span>
@@ -51,7 +60,7 @@
             </tr>
           {% else %}
             <tr>
-              <td colspan="3">
+              <td colspan="4">
                 <div class="empty empty--compact">
                   <div class="empty__icon"><svg aria-hidden="true"><use href="#ico-filter"/></svg></div>
                   <p class="empty__title">No exclusions configured</p>

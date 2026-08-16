@@ -174,7 +174,10 @@ class AlertService:
         if event.id is not None:
             footer.append(f"Event ID: {event.id}")
         if event.container_name:
-            footer.append(f"Dashboard: /insights?container={quote(event.container_name, safe='')}")
+            link = f"/insights?container={quote(event.container_name, safe='')}"
+            if event.id is not None:
+                link += f"&event={event.id}"
+            footer.append(f"Dashboard: {link}")
         if footer:
             lines.append(" · ".join(footer))
         return "\n".join(lines)
