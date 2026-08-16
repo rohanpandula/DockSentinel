@@ -159,6 +159,14 @@
           <span class="field__help">critical only is the quiet default.</span>
         </label>
         {{ num('alert_cooldown_minutes', 'Alert cooldown (min)', settings.alert_cooldown_minutes, help='Suppress repeat alerts for the same container.') }}
+        <label class="field">
+          <span class="field__label">Min confidence to alert</span>
+          <input class="input tabular" type="number" step="0.05" min="0" max="1" name="alert_min_confidence" value="{{ settings.alert_min_confidence if settings.alert_min_confidence is defined and settings.alert_min_confidence is not none else 0 }}" />
+          <span class="field__help">0 = off. Verdicts below this confidence never alert (they are still recorded).</span>
+        </label>
+        {{ num('analysis_cooldown_minutes', 'Analysis cooldown (min)', settings.analysis_cooldown_minutes if settings.analysis_cooldown_minutes is defined else 15, min=0, help='Skip re-analysing a container whose last verdict was warning/noise and whose new logs look the same. 0 = off.') }}
+        {{ num('persistent_warning_count', 'Escalate warnings after', settings.persistent_warning_count if settings.persistent_warning_count is defined else 3, min=0, help='This many warnings for one container inside the window below → one PERSISTENT WARNING alert. 0 = off.') }}
+        {{ num('persistent_warning_window_minutes', 'Escalation window (min)', settings.persistent_warning_window_minutes if settings.persistent_warning_window_minutes is defined else 60, min=1) }}
         {{ num('restart_alert_count', 'Restart-storm: exits', settings.restart_alert_count, min=1, help='Alert after this many exits…') }}
         {{ num('restart_alert_window_minutes', 'Restart-storm window (min)', settings.restart_alert_window_minutes, min=1, help='…within this window.') }}
         {{ num('event_retention_days', 'Keep skipped/noise events (days)', settings.event_retention_days, min=1, help='Older skipped/noise rows are pruned.') }}
