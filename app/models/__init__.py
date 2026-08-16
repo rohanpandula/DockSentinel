@@ -1,3 +1,4 @@
+from app.models.container_mute import ContainerMute
 from app.models.events import AnalysisEvent
 from app.models.exclusions import ExclusionRule
 from app.models.local_issue import LocalIssue, LocalIssueAction, LocalIssueStatus
@@ -9,6 +10,7 @@ from app.models.settings import Settings
 
 __all__ = [
     "AnalysisEvent",
+    "ContainerMute",
     "ExclusionRule",
     "LocalIssue",
     "LocalIssueAction",

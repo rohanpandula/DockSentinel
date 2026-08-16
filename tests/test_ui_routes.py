@@ -128,7 +128,7 @@ def test_alert_message_has_excerpt_and_dashboard_hint():
     text = AlertService._format_message(event)
     assert "LOG EXCERPT" in text
     body = text.split("LOG EXCERPT")[1]
-    assert "l2 " in body and "l1 " not in body  # last 5 non-empty lines
+    assert "l4 " in body and "l3 " not in body  # last 3 non-empty lines
     for ln in body.splitlines():
         assert len(ln) <= 160
     assert "Dashboard: /insights?container=my%20app" in text

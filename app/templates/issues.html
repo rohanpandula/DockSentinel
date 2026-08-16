@@ -103,6 +103,23 @@
         {% endif %}
       </form>
 
+      {% if selected.container_name %}
+      <div class="btn-row mt-3" data-mute-controls>
+        {% if selected_mute %}
+          <span class="badge badge--neutral badge--no-dot badge--muted" title="Alerts for this container are muted">muted until {{ selected_mute.until_label() }}</span>
+          <form method="post" action="{{ url_for('unmute_container', container_name=selected.container_name) }}">
+            <input type="hidden" name="next" value="{{ url_for('issues_page', id=selected.id) }}" />
+            <button class="btn btn--sm">Unmute</button>
+          </form>
+        {% else %}
+          <form method="post" action="{{ url_for('mute_container', container_name=selected.container_name, hours=24) }}">
+            <input type="hidden" name="next" value="{{ url_for('issues_page', id=selected.id) }}" />
+            <button class="btn btn--sm btn--ghost" title="Suppress Telegram alerts for {{ selected.container_name }} for 24 hours">Mute container 24h</button>
+          </form>
+        {% endif %}
+      </div>
+      {% endif %}
+
       <hr class="divider" />
 
       <section data-tryllm data-issue-id="{{ selected.id }}" aria-labelledby="tryllm-title">

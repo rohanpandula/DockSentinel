@@ -84,6 +84,9 @@
             {% if issue_by_event.get(e.id) %}
               <a class="badge badge--warning badge--no-dot" href="{{ url_for('issues_page', id=issue_by_event[e.id]) }}">issue #{{ issue_by_event[e.id] }}</a>
             {% endif %}
+            {% if muted_until.get(e.container_name) %}
+              <span class="badge badge--neutral badge--no-dot badge--muted" title="Alerts for this container are muted">muted until {{ muted_until[e.container_name] }}</span>
+            {% endif %}
           </span>
         </summary>
         <div class="disclosure__body">
@@ -121,6 +124,21 @@
           </dl>
           <div class="eyebrow mb-2">Log excerpt</div>
           <pre class="code-block">{{ e.chunk_excerpt or '—' }}</pre>
+          {% if e.container_name %}
+          <div class="btn-row mt-3">
+            {% if muted_until.get(e.container_name) %}
+              <form method="post" action="{{ url_for('unmute_container', container_name=e.container_name) }}">
+                <input type="hidden" name="next" value="{{ request.full_path }}" />
+                <button class="btn btn--sm">Unmute {{ e.container_name }}</button>
+              </form>
+            {% else %}
+              <form method="post" action="{{ url_for('mute_container', container_name=e.container_name, hours=24) }}">
+                <input type="hidden" name="next" value="{{ request.full_path }}" />
+                <button class="btn btn--sm btn--ghost" title="Suppress Telegram alerts for this container for 24 hours">Mute container 24h</button>
+              </form>
+            {% endif %}
+          </div>
+          {% endif %}
         </div>
       </details>
     {% endfor %}

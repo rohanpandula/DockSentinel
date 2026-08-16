@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from datetime import timedelta
 from typing import Any, Optional
 
 from flask import Flask
@@ -16,13 +17,17 @@ from app.models import (
     PromptKey,
 )
 from app.repositories.analysis_events import AnalysisEventRepository
+from app.repositories.container_mutes import ContainerMuteRepository
 from app.repositories.local_issues import LocalIssueRepository
 from app.repositories.prompts import PromptRepository
 from app.repositories.settings import SettingsRepository
 from app.services.llm_call import LLMCallService
 from app.services.telegram import TelegramNotifier
+from app.time_utils import utcnow_naive
 
 logger = logging.getLogger(__name__)
+
+MUTE_HOURS = 24
 
 
 class TelegramBotService:
@@ -50,6 +55,7 @@ class TelegramBotService:
         issue_repo: LocalIssueRepository,
         prompt_repo: PromptRepository,
         llm_call_service: LLMCallService,
+        mute_repo: Optional[ContainerMuteRepository] = None,
     ) -> None:
         self._app = app
         self.notifier = notifier
@@ -58,6 +64,7 @@ class TelegramBotService:
         self.issue_repo = issue_repo
         self.prompt_repo = prompt_repo
         self.llm_call_service = llm_call_service
+        self.mute_repo = mute_repo
         self._thread: Optional[threading.Thread] = None
         self._stop = threading.Event()
         self._offset = 0
@@ -184,6 +191,21 @@ class TelegramBotService:
                 issue.telegram_message_id = reply_id
                 db.session.commit()
             self.notifier.answer_callback_query(token, cq_id, "Ask a follow-up")
+        elif action == "mute":
+            name = event.container_name or ""
+            if self.mute_repo is None or not name:
+                self.notifier.answer_callback_query(token, cq_id, "Mute unavailable")
+                return
+            until = utcnow_naive() + timedelta(hours=MUTE_HOURS)
+            mute = self.mute_repo.upsert(name, until, "telegram")
+            db.session.commit()
+            self.notifier.edit_message_reply_markup(token, chat_id, message_id, reply_markup={"inline_keyboard": []})
+            self.notifier.answer_callback_query(token, cq_id, f"Muted {name} for {MUTE_HOURS}h")
+            self.notifier.send_message(
+                token, chat_id,
+                f"🔕 MUTED · {name} · until {mute.until_label()}",
+                reply_to_message_id=message_id,
+            )
         else:
             self.notifier.answer_callback_query(token, cq_id, "Unknown action")
 
@@ -193,6 +215,8 @@ class TelegramBotService:
         if not text:
             return
         chat_id = str(msg.get("chat", {}).get("id", ""))
+        if self._handle_command(text, chat_id, token, msg.get("message_id")):
+            return
         reply_to = msg.get("reply_to_message") or {}
         reply_to_id = reply_to.get("message_id")
 
@@ -218,6 +242,41 @@ class TelegramBotService:
         if ok and reply_id is not None:
             issue.telegram_message_id = reply_id
             db.session.commit()
+
+    # ── Text commands: /mutes, /unmute <name> ───────────────────
+    def _handle_command(self, text: str, chat_id: str, token: str, message_id: Optional[int]) -> bool:
+        """Returns True if `text` was a bot command and has been handled."""
+        if not text.startswith("/"):
+            return False
+        parts = text.split()
+        cmd = parts[0].split("@", 1)[0].lower()
+        if cmd == "/mutes":
+            if self.mute_repo is None:
+                reply = "Mutes unavailable."
+            else:
+                mutes = self.mute_repo.list_active(utcnow_naive())
+                if not mutes:
+                    reply = "🔔 No containers are muted."
+                else:
+                    reply = "🔕 Muted containers:\n" + "\n".join(
+                        f"• {m.container_name} · until {m.until_label()}" for m in mutes
+                    )
+            self.notifier.send_message(token, chat_id, reply, reply_to_message_id=message_id)
+            return True
+        if cmd == "/unmute":
+            name = " ".join(parts[1:]).strip()
+            if not name:
+                reply = "Usage: /unmute <container_name>"
+            elif self.mute_repo is None:
+                reply = "Mutes unavailable."
+            elif self.mute_repo.delete(name):
+                db.session.commit()
+                reply = f"🔔 UNMUTED · {name}"
+            else:
+                reply = f"{name} is not muted."
+            self.notifier.send_message(token, chat_id, reply, reply_to_message_id=message_id)
+            return True
+        return False
 
     # ── Helpers ─────────────────────────────────────────────────
     def _create_issue(
