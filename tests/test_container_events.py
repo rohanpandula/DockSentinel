@@ -53,12 +53,68 @@ def test_classification_matrix(app, container):
             ("die", {"exitCode": 0}, "noise"),
             ("die", {"exitCode": 1}, "critical"),
             ("restart", {}, "warning"),
-            ("kill", {"signal": "15"}, "warning"),
+            ("kill", {"signal": "9"}, "warning"),
+            ("die", {"exitCode": 137}, "critical"),  # SIGKILL is not an operator stop
             ("start", {}, "noise"),
+            ("stop", {}, "noise"),
+            ("kill", {"signal": "15"}, "warning"),
+            ("die", {"exitCode": 143}, "noise"),  # die right after kill(TERM) = operator stop
+            ("die", {"exitCode": 143}, "critical"),  # mark is consumed; a second die is real
         ]
         for status, attrs, expected in cases:
             event = sentinel.handle_container_event("c1", "web", status, attrs)
             assert event.classification == expected, (status, attrs)
+
+
+def test_operator_stop_is_noise_and_not_counted_in_storm(app, container):
+    with app.app_context():
+        strategy = _RecordingStrategy()
+        sentinel = _sentinel(container, strategy)
+        settings = Settings.singleton()
+        settings.restart_alert_count = 2
+        settings.restart_alert_window_minutes = 10
+        db.session.commit()
+
+        # docker stop: kill(15) -> die(143) -> stop
+        sentinel.handle_container_event("c1", "web", "kill", {"signal": "15"})
+        die = sentinel.handle_container_event("c1", "web", "die", {"exitCode": 143})
+        stop = sentinel.handle_container_event("c1", "web", "stop", {})
+        assert die.classification == "noise"
+        assert die.summary == "web stopped by operator (exit 143)"
+        assert die.matched_keywords == "die:stopped"
+        assert stop.classification == "noise" and stop.summary == "web stopping"
+
+        # kill without a signal is also treated as TERM
+        sentinel.handle_container_event("c1", "web", "kill", {})
+        die2 = sentinel.handle_container_event("c1", "web", "die", {"exitCode": 0})
+        assert die2.classification == "noise"
+        assert die2.summary == "web stopped by operator (exit 0)"
+
+        # Two operator stops did not trip the storm (threshold 2).
+        assert strategy.sent == []
+        # A real crash counts from zero: one more die is still under threshold.
+        crash = sentinel.handle_container_event("c1", "web", "die", {"exitCode": 1})
+        assert crash.classification == "critical"
+        assert crash.alert_sent is not True and strategy.sent == []
+
+
+def test_operator_stop_mark_expires_after_20s(app, container, monkeypatch):
+    import app.services.sentinel as sentinel_mod
+
+    with app.app_context():
+        sentinel = _sentinel(container)
+        clock = [1000.0]
+        monkeypatch.setattr(sentinel_mod.time, "monotonic", lambda: clock[0])
+        sentinel.handle_container_event("c1", "web", "kill", {"signal": "SIGTERM"})
+        clock[0] += 25.0
+        die = sentinel.handle_container_event("c1", "web", "die", {"exitCode": 143})
+        assert die.classification == "critical"
+        assert die.matched_keywords == "die"
+
+        # Different container name is not affected by web's stop mark.
+        sentinel.handle_container_event("c1", "web", "stop", {})
+        other = sentinel.handle_container_event("c2", "db", "die", {"exitCode": 1})
+        assert other.classification == "critical"
 
 
 def test_disabled_or_excluded_records_nothing(app, container):
@@ -206,6 +262,7 @@ def test_watcher_dispatches_container_events(monkeypatch):
             {"Type": "container", "status": "health_status: unhealthy", "id": "c2", "Actor": {"Attributes": {"name": "api"}}},
             {"Type": "container", "status": "attach", "id": "c2", "Actor": {"Attributes": {"name": "api"}}},
             {"Type": "container", "status": "start", "id": "c3", "Actor": {"Attributes": {}}},
+            {"Type": "container", "status": "stop", "id": "c3", "Actor": {"Attributes": {"name": "w"}}},
             {"Type": "container", "status": "die", "Actor": {"Attributes": {"name": "no-id"}}},
         ]
     )
@@ -216,6 +273,7 @@ def test_watcher_dispatches_container_events(monkeypatch):
         ("c1", "web", "oom"),
         ("c2", "api", "health_status: unhealthy"),
         ("c3", "c3", "start"),
+        ("c3", "w", "stop"),
     ]
     assert seen[0][3]["exitCode"] == 137  # coerced to int
 
