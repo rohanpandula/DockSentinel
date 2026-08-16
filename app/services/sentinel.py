@@ -230,8 +230,11 @@ class SentinelService:
         if status == "restart":
             return "warning", "restarted"
         if status == "kill":
+            # `kill` events are emitted by `docker stop`/`docker kill`/compose — i.e. by an
+            # operator or orchestrator (a kernel OOM kill arrives as its own `oom` event),
+            # so they are informational, not incidents.
             signal = attrs.get("signal")
-            return "warning", f"received signal {signal}" if signal else "was killed"
+            return "noise", f"received signal {signal}" if signal else "was killed"
         if status == "stop":
             return "noise", "stopping"
         if status == "start":

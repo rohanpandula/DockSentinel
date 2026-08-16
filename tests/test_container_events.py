@@ -53,11 +53,11 @@ def test_classification_matrix(app, container):
             ("die", {"exitCode": 0}, "noise"),
             ("die", {"exitCode": 1}, "critical"),
             ("restart", {}, "warning"),
-            ("kill", {"signal": "9"}, "warning"),
+            ("kill", {"signal": "9"}, "noise"),
             ("die", {"exitCode": 137}, "critical"),  # SIGKILL is not an operator stop
             ("start", {}, "noise"),
             ("stop", {}, "noise"),
-            ("kill", {"signal": "15"}, "warning"),
+            ("kill", {"signal": "15"}, "noise"),
             ("die", {"exitCode": 143}, "noise"),  # die right after kill(TERM) = operator stop
             ("die", {"exitCode": 143}, "critical"),  # mark is consumed; a second die is real
         ]
