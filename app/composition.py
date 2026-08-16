@@ -6,6 +6,7 @@ from flask import Flask
 
 from app.container import ServiceContainer
 from app.repositories.analysis_events import AnalysisEventRepository
+from app.repositories.container_mutes import ContainerMuteRepository
 from app.repositories.exclusions import ExclusionRepository
 from app.repositories.prompts import PromptRepository
 from app.repositories.reports import ReportRepository
@@ -45,9 +46,12 @@ def build_container(app: Flask) -> ServiceContainer:
     report_repo = ReportRepository()
     exclusion_repo = ExclusionRepository()
     issue_repo = LocalIssueRepository()
+    mute_repo = ContainerMuteRepository()
 
     alert_strategy = TelegramAlertStrategy(telegram_notifier)
-    alert_service = AlertService(strategy=alert_strategy, event_repo=event_repo, issue_repo=issue_repo)
+    alert_service = AlertService(
+        strategy=alert_strategy, event_repo=event_repo, issue_repo=issue_repo, mute_repo=mute_repo
+    )
 
     sentinel_service = SentinelService(
         llm_call_service=llm_call_service,
@@ -73,6 +77,7 @@ def build_container(app: Flask) -> ServiceContainer:
         issue_repo=issue_repo,
         prompt_repo=prompt_repo,
         llm_call_service=llm_call_service,
+        mute_repo=mute_repo,
     )
     coordinator = RuntimeCoordinator(
         app=app,
@@ -100,4 +105,5 @@ def build_container(app: Flask) -> ServiceContainer:
         telegram_bot=telegram_bot,
         report_repo=report_repo,
         exclusion_repo=exclusion_repo,
+        mute_repo=mute_repo,
     )

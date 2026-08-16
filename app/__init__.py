@@ -34,6 +34,7 @@ def _register_blueprints(app: Flask) -> None:
     from app.api.health import bp as health_bp
     from app.api.insights import bp as insights_bp
     from app.api.issues import bp as issues_bp
+    from app.api.mutes import bp as mutes_bp
     from app.api.prompts import bp as prompts_bp
     from app.api.reports import bp as reports_bp
     from app.api.sentinel import bp as sentinel_bp
@@ -42,7 +43,8 @@ def _register_blueprints(app: Flask) -> None:
     from app.web.routes import bp as web_bp
 
     for bp in (health_bp, settings_bp, exclusions_bp, prompts_bp,
-               sentinel_bp, insights_bp, reports_bp, telegram_bp, issues_bp):
+               sentinel_bp, insights_bp, reports_bp, telegram_bp, issues_bp,
+               mutes_bp):
         app.register_blueprint(bp)
     # Register web_bp with name="" so endpoints resolve without a "web." prefix
     # (preserves url_for("dashboard") etc. in templates — APP-03 guardrail).

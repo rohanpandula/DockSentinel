@@ -34,6 +34,7 @@ class ServiceContainer:
     exclusion_repo: ExclusionRepository
     issue_repo: Any = None
     telegram_bot: Any = None
+    mute_repo: Any = None
 
     def __getitem__(self, key: str) -> Any:
         """Backwards-compatibility shim for string-key access during migration."""

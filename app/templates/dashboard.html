@@ -246,6 +246,32 @@
       </form>
     </section>
 
+    <!-- Muted containers -->
+    <section class="card card--pad" aria-labelledby="mutes-title" data-mutes-card>
+      <div class="card__head">
+        <h2 class="card__title" id="mutes-title">Muted containers</h2>
+        <span class="text-tertiary text-xs">{{ mutes|length }}</span>
+      </div>
+      {% if mutes %}
+        <ul class="list-reset stack stack--sm">
+          {% for m in mutes %}
+            <li class="row row--between">
+              <span class="truncate" title="{{ m.container_name }}">
+                <span class="text-mono text-sm">{{ m.container_name }}</span>
+                <span class="text-tertiary text-xs"> · until {{ m.until_label() }}</span>
+              </span>
+              <form method="post" action="{{ url_for('unmute_container', container_name=m.container_name) }}">
+                <input type="hidden" name="next" value="{{ url_for('dashboard') }}" />
+                <button class="btn btn--sm btn--ghost">Unmute</button>
+              </form>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="text-secondary text-sm">No containers are muted. Mute one from an event row, an issue, or the 🔕 button in Telegram.</p>
+      {% endif %}
+    </section>
+
     <!-- Latest report -->
     <section class="card card--pad" aria-labelledby="report-title">
       <div class="card__head">

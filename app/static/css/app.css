@@ -257,6 +257,7 @@ code, pre, kbd, .mono, .text-mono { font-family: var(--font-mono); }
 .badge--info { background: var(--info-muted); color: var(--info); }
 .badge--accent { background: var(--accent-muted); color: var(--accent-fg); }
 .badge--noise, .badge--neutral { background: var(--neutral-muted); color: var(--fg-tertiary); }
+.badge--muted { border: 1px dashed var(--fg-tertiary); }
 a.badge:hover { text-decoration: none; filter: brightness(.95); }
 :root[data-theme="dark"] a.badge:hover { filter: brightness(1.15); }
 

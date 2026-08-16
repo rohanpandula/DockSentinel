@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from flask import Blueprint, current_app, redirect, render_template, request, url_for
 from markupsafe import Markup
@@ -67,6 +67,7 @@ def dashboard():
         known_containers=_list_running_containers(),
         analyze_error=request.args.get("analyze_error"),
         settings=container.settings_repo.get(),
+        mutes=container.mute_repo.list_active(utcnow_naive()),
     )
 
 
@@ -190,10 +191,15 @@ def insights_page():
         for event_id, issue_id in rows:
             issue_by_event.setdefault(event_id, issue_id)
 
+    muted_until = {
+        m.container_name: m.until_label() for m in svc.mute_repo.list_active(utcnow_naive())
+    }
+
     return render_template(
         "insights.html",
         events=events,
         containers=containers,
+        muted_until=muted_until,
         statuses=EVENT_STATUSES,
         issue_by_event=issue_by_event,
         filters={
@@ -268,8 +274,13 @@ def issues_page():
             if event is not None:
                 analyzed_by = event.model
 
+    selected_mute = None
+    if selected is not None and selected.container_name:
+        selected_mute = svc.mute_repo.get_active(selected.container_name, utcnow_naive())
+
     return render_template(
         "issues.html",
+        selected_mute=selected_mute,
         selected_body_html=Markup(render_markdown(selected.body)) if selected and selected.body else Markup(""),
         issues=issues,
         counts=counts,
@@ -311,3 +322,39 @@ def sentinel_analyze_from_ui():
     except Exception as exc:
         return redirect(url_for("dashboard", analyze_error=str(exc)[:300]))
     return redirect(url_for("dashboard"))
+
+
+def _redirect_back(default_endpoint: str = "dashboard"):
+    nxt = request.form.get("next") or request.referrer
+    # Only follow same-site relative paths.
+    if nxt and nxt.startswith("/") and not nxt.startswith("//"):
+        return redirect(nxt)
+    if nxt and request.host_url and nxt.startswith(request.host_url):
+        return redirect(nxt)
+    return redirect(url_for(default_endpoint))
+
+
+@bp.route("/mutes/<path:container_name>", methods=["POST"], endpoint="mute_container")
+def mute_container(container_name: str):
+    svc = current_app.extensions["services"]
+    name = container_name.strip()
+    hours = request.args.get("hours", request.form.get("hours", "24"))
+    try:
+        hours_int = int(hours) if hours not in (None, "", "0", "null") else None
+    except ValueError:
+        hours_int = 24
+    if hours_int is not None and not (1 <= hours_int <= 8760):
+        hours_int = 24
+    if name:
+        until = utcnow_naive() + timedelta(hours=hours_int) if hours_int is not None else None
+        svc.mute_repo.upsert(name, until, request.form.get("reason") or "ui")
+        db.session.commit()
+    return _redirect_back()
+
+
+@bp.route("/mutes/<path:container_name>/delete", methods=["POST"], endpoint="unmute_container")
+def unmute_container(container_name: str):
+    svc = current_app.extensions["services"]
+    if svc.mute_repo.delete(container_name.strip()):
+        db.session.commit()
+    return _redirect_back()

@@ -199,6 +199,10 @@ GET    /api/exclusions
 POST   /api/exclusions
 DELETE /api/exclusions/{id}
 
+GET    /api/mutes                       # active per-container alert mutes
+PUT    /api/mutes/{container_name}      # {"hours": 1..8760 | null (indefinite), "reason"?: ...}
+DELETE /api/mutes/{container_name}
+
 GET    /api/prompts
 PUT    /api/prompts/{key}
 POST   /api/prompts/{key}/reset
