@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
+import time
 from datetime import timedelta
 from typing import Any, TYPE_CHECKING
 
@@ -17,9 +19,54 @@ from app.time_utils import utcnow_naive
 
 CLASSIFICATION_RANK = {"noise": 0, "warning": 1, "critical": 2}
 
+# A `die` arriving this soon after a kill(SIGTERM)/stop for the same container
+# name is an operator-initiated stop, not an incident.
+OPERATOR_STOP_WINDOW_SECONDS = 20.0
+OPERATOR_STOP_KEYWORD = "die:stopped"
+_TERM_SIGNALS = frozenset({"", "15", "term", "sigterm"})
+
+# Analysis-level cooldown: chunks whose token sets overlap at least this much
+# with the last analyzed chunk are considered "the same warning again".
+ANALYSIS_SIMILARITY_THRESHOLD = 0.6
+_SIMILARITY_LINES = 20
+_LEADING_TIMESTAMP_RE = re.compile(
+    r"^(?:"
+    r"\[[^\]]*\d[^\]]*\]\s*"  # [2026-08-15 10:00:00] style bracketed times (not [INFO])
+    r"|\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:[.,]\d+)?(?:Z|[+-]\d{2}:?\d{2})?\s*"
+    r"|\d{2}:\d{2}:\d{2}(?:[.,]\d+)?\s*"
+    r")+"
+)
+
 
 def classification_rank(value: str | None) -> int:
     return CLASSIFICATION_RANK.get((value or "").strip().lower(), -1)
+
+
+def chunk_similarity_tokens(text: str, max_lines: int = _SIMILARITY_LINES) -> set[str]:
+    """Distinct non-timestamp tokens of the first ``max_lines`` non-empty lines."""
+    tokens: set[str] = set()
+    taken = 0
+    for raw in (text or "").splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        line = _LEADING_TIMESTAMP_RE.sub("", line)
+        tokens.update(line.split())
+        taken += 1
+        if taken >= max_lines:
+            break
+    return tokens
+
+
+def chunk_similarity(a: str, b: str) -> float:
+    """Jaccard similarity of the two chunks' token sets (0..1)."""
+    ta, tb = chunk_similarity_tokens(a), chunk_similarity_tokens(b)
+    if not ta and not tb:
+        return 1.0
+    union = ta | tb
+    if not union:
+        return 0.0
+    return len(ta & tb) / len(union)
 
 if TYPE_CHECKING:
     from app.repositories.analysis_events import AnalysisEventRepository
@@ -47,6 +94,8 @@ class SentinelService:
         self.exclusion_repo = exclusion_repo
         self.coalescer = coalescer
         self.log_buffer = LogBuffer(16000, 4000, 600)
+        # container_name -> time.monotonic() of the last kill(SIGTERM)/stop event
+        self._operator_stops: dict[str, float] = {}
 
     def _settings(self) -> Settings:
         return Settings.singleton()
@@ -154,14 +203,20 @@ class SentinelService:
     STORM_STATUSES = ("die", "oom")
 
     @staticmethod
-    def classify_container_event(status: str, attrs: dict[str, Any]) -> tuple[str, str]:
-        """Return (classification, summary_suffix) for a docker lifecycle event."""
+    def classify_container_event(
+        status: str, attrs: dict[str, Any], operator_stop: bool = False
+    ) -> tuple[str, str]:
+        """Return (classification, summary_suffix) for a docker lifecycle event.
+        ``operator_stop`` marks a `die` that followed a kill(SIGTERM)/stop for the
+        same container within OPERATOR_STOP_WINDOW_SECONDS."""
         exit_code = attrs.get("exitCode")
         if status == "oom":
             return "critical", "was OOM killed"
         if status == "health_status: unhealthy":
             return "critical", "became unhealthy"
         if status == "die":
+            if operator_stop:
+                return "noise", f"stopped by operator (exit {exit_code if exit_code is not None else 0})"
             if exit_code in (None, 0):
                 return "noise", "exited with code 0"
             hint = ""
@@ -177,9 +232,26 @@ class SentinelService:
         if status == "kill":
             signal = attrs.get("signal")
             return "warning", f"received signal {signal}" if signal else "was killed"
+        if status == "stop":
+            return "noise", "stopping"
         if status == "start":
             return "noise", "started"
         return "noise", status
+
+    @staticmethod
+    def _is_term_signal(signal: Any) -> bool:
+        return str(signal if signal is not None else "").strip().lower() in _TERM_SIGNALS
+
+    def _note_operator_stop(self, container_name: str, status: str, attrs: dict[str, Any]) -> None:
+        if status == "stop" or (status == "kill" and self._is_term_signal(attrs.get("signal"))):
+            self._operator_stops[container_name] = time.monotonic()
+
+    def _pop_operator_stop(self, container_name: str) -> bool:
+        """True (and forget the mark) if a kill(SIGTERM)/stop was seen recently."""
+        ts = self._operator_stops.pop(container_name, None)
+        if ts is None:
+            return False
+        return (time.monotonic() - ts) <= OPERATOR_STOP_WINDOW_SECONDS
 
     def handle_container_event(
         self, container_id: str, container_name: str, status: str, attrs: dict[str, Any] | None = None
@@ -191,22 +263,26 @@ class SentinelService:
         if self.is_excluded_container(container_name):
             return None
         attrs = dict(attrs or {})
-        classification, suffix = self.classify_container_event(status, attrs)
+        self._note_operator_stop(container_name, status, attrs)
+        operator_stop = status == "die" and self._pop_operator_stop(container_name)
+        classification, suffix = self.classify_container_event(status, attrs, operator_stop=operator_stop)
         exit_code = attrs.get("exitCode")
 
+        # Operator stops get a distinct keyword so STORM_STATUSES never counts them.
+        keyword = OPERATOR_STOP_KEYWORD if operator_stop else status
         event = AnalysisEvent(
             container_id=container_id,
             container_name=container_name,
             status="container_event",
             classification=classification,
-            matched_keywords=status,
+            matched_keywords=keyword,
             summary=f"{container_name} {suffix}",
             chunk_excerpt=json.dumps(attrs, sort_keys=True, default=str)[:1200],
         )
         self.event_repo.add(event)
         db.session.flush()
 
-        if status in self.STORM_STATUSES:
+        if keyword in self.STORM_STATUSES:
             self._maybe_send_restart_storm(event, exit_code)
 
         db.session.commit()
@@ -352,6 +428,23 @@ class SentinelService:
             db.session.commit()
             return event
 
+        # --- Analysis-level cooldown: same warning/noise again within the window ---
+        if not force:
+            previous = self._find_cooldown_match(container_id, chunk_text, settings)
+            if previous is not None:
+                event.status = "analysis_cooldown"
+                event.classification = previous.classification
+                event.summary = f"same as event #{previous.id} (cooldown)"
+                event.root_cause_hypothesis = previous.root_cause_hypothesis
+                event.fix_suggestion = previous.fix_suggestion
+                event.confidence = previous.confidence
+                self.event_repo.add(event)
+                db.session.flush()
+                if event.classification == "warning":
+                    self._maybe_escalate_warning(event, settings)
+                db.session.commit()
+                return event
+
         sentinel_system = self._prompt(PromptKey.SENTINEL_SYSTEM)
         sentinel_analysis = self._prompt(PromptKey.SENTINEL_ANALYSIS)
         guard = self._prompt(PromptKey.JSON_OUTPUT_GUARD)
@@ -423,13 +516,79 @@ class SentinelService:
 
         alert_config = AlertConfig.from_settings(settings)
         if classification_rank(verdict.classification) >= classification_rank(alert_config.min_classification):
-            sent, alert_error, tg_message_id = self.alert_service.maybe_send(event, alert_config)
-            event.alert_sent = sent
-            event.alert_error = alert_error
+            suppressed = self._confidence_suppression(verdict.confidence, alert_config)
+            if suppressed is not None:
+                event.alert_sent = False
+                event.alert_error = suppressed
+            else:
+                sent, alert_error, tg_message_id = self.alert_service.maybe_send(event, alert_config)
+                event.alert_sent = sent
+                event.alert_error = alert_error
+
+        if event.classification == "warning" and not event.alert_sent:
+            self._maybe_escalate_warning(event, settings)
 
         db.session.commit()
         self.mark_runtime_running()
         return event
+
+    @staticmethod
+    def _confidence_suppression(confidence: Any, alert_config: AlertConfig) -> str | None:
+        """Return an alert_error string when the verdict confidence is below the
+        configured floor (``alert_min_confidence`` > 0), else None."""
+        floor = float(alert_config.min_confidence or 0.0)
+        if floor <= 0.0 or confidence is None:
+            return None
+        try:
+            value = float(confidence)
+        except (TypeError, ValueError):
+            return None
+        if value < floor:
+            return f"suppressed: confidence {value:.2f} < {floor:.2f}"
+        return None
+
+    def _find_cooldown_match(self, container_id: str, chunk_text: str, settings: Settings) -> AnalysisEvent | None:
+        """The most recent analyzed event for this container inside
+        ``analysis_cooldown_minutes`` whose verdict was warning/noise and whose
+        chunk looks like this one (token Jaccard >= 0.6). Critical verdicts are
+        never reused: a repeat of a critical always gets a fresh look."""
+        minutes = int(getattr(settings, "analysis_cooldown_minutes", 0) or 0)
+        if minutes <= 0:
+            return None
+        since = utcnow_naive() - timedelta(minutes=minutes)
+        previous = self.event_repo.find_last_analyzed(container_id, since)
+        if previous is None or previous.classification not in ("warning", "noise"):
+            return None
+        if chunk_similarity(chunk_text, previous.chunk_excerpt or "") < ANALYSIS_SIMILARITY_THRESHOLD:
+            return None
+        return previous
+
+    def _maybe_escalate_warning(self, event: AnalysisEvent, settings: Settings) -> None:
+        """Persistent-warning escalation: N warning verdicts for one container
+        name inside the window -> one alert (subject to the alert cooldown)."""
+        threshold = int(getattr(settings, "persistent_warning_count", 0) or 0)
+        window_minutes = int(getattr(settings, "persistent_warning_window_minutes", 60) or 60)
+        if threshold <= 0 or window_minutes <= 0 or not event.container_name:
+            return
+        now = utcnow_naive()
+        count = self.event_repo.count_warnings(event.container_name, now - timedelta(minutes=window_minutes))
+        if count < threshold:
+            return
+        cooldown_minutes = int(settings.alert_cooldown_minutes or 0)
+        if cooldown_minutes > 0:
+            since = now - timedelta(minutes=cooldown_minutes)
+            if self.event_repo.find_recent_alert_for_name(event.container_name, since) is not None:
+                event.alert_error = "persistent warning alert suppressed by cooldown"
+                return
+        alert_config = AlertConfig.from_settings(settings)
+        suppressed = self._confidence_suppression(event.confidence, alert_config)
+        if suppressed is not None:
+            event.alert_sent = False
+            event.alert_error = suppressed
+            return
+        sent, error, _ = self.alert_service.maybe_send_escalation(event, alert_config, count, window_minutes)
+        event.alert_sent = sent
+        event.alert_error = error
 
     def analyze_container_now(self, container_name_or_id: str) -> AnalysisEvent:
         settings = self._settings()

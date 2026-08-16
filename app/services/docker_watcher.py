@@ -18,7 +18,7 @@ ContainerEventCallback = Callable[[str, str, str, dict], None]
 
 # Lifecycle statuses forwarded to container_event_callback. Docker emits
 # health changes as "health_status: unhealthy" / "health_status: healthy".
-CONTAINER_EVENT_STATUSES = frozenset({"die", "oom", "kill", "restart", "start", "health_status: unhealthy"})
+CONTAINER_EVENT_STATUSES = frozenset({"die", "oom", "kill", "stop", "restart", "start", "health_status: unhealthy"})
 
 
 def _event_fields(event: dict) -> tuple[str | None, str | None, dict]:

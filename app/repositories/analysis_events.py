@@ -109,6 +109,47 @@ class AnalysisEventRepository:
             .first()
         )
 
+    def find_last_analyzed(self, container_id: str, since: datetime) -> AnalysisEvent | None:
+        """Most recent LLM-analyzed event for this container id inside the window
+        (used by the analysis-level cooldown)."""
+        return (
+            AnalysisEvent.query.filter(
+                and_(
+                    AnalysisEvent.container_id == container_id,
+                    AnalysisEvent.status == "analyzed",
+                    AnalysisEvent.created_at >= since,
+                )
+            )
+            .order_by(AnalysisEvent.created_at.desc(), AnalysisEvent.id.desc())
+            .first()
+        )
+
+    def count_warnings(self, container_name: str, since: datetime) -> int:
+        """Warning verdicts (analyzed or inherited via analysis_cooldown) for one
+        container NAME inside the window (persistent-warning escalation)."""
+        return AnalysisEvent.query.filter(
+            and_(
+                AnalysisEvent.container_name == container_name,
+                AnalysisEvent.status.in_(["analyzed", "analysis_cooldown"]),
+                AnalysisEvent.classification == "warning",
+                AnalysisEvent.created_at >= since,
+            )
+        ).count()
+
+    def find_recent_alert_for_name(self, container_name: str, since: datetime) -> AnalysisEvent | None:
+        """Most recent *sent* alert of any kind for this container NAME."""
+        return (
+            AnalysisEvent.query.filter(
+                and_(
+                    AnalysisEvent.container_name == container_name,
+                    AnalysisEvent.alert_sent.is_(True),
+                    AnalysisEvent.created_at >= since,
+                )
+            )
+            .order_by(AnalysisEvent.created_at.desc())
+            .first()
+        )
+
     def get_for_window(self, since: datetime) -> list[AnalysisEvent]:
         return (
             AnalysisEvent.query.filter(AnalysisEvent.created_at >= since)
@@ -148,7 +189,9 @@ class AnalysisEventRepository:
         )
         return query.order_by(order_col).limit(limit).offset(offset).all()
 
-    PRUNABLE_STATUSES = frozenset({"skipped", "dedup_skipped", "rate_limited", "queued", "excluded"})
+    PRUNABLE_STATUSES = frozenset(
+        {"skipped", "dedup_skipped", "analysis_cooldown", "rate_limited", "queued", "excluded"}
+    )
 
     def prune(self, older_than: datetime, statuses=None) -> int:
         """Delete low-value rows older than ``older_than``. Never touches analyzed/parse_error/llm_error."""

@@ -62,6 +62,12 @@ class Settings(db.Model):
     restart_alert_count = db.Column(db.Integer, nullable=False, default=3)
     restart_alert_window_minutes = db.Column(db.Integer, nullable=False, default=10)
 
+    # --- Triage tuning (analysis cooldown / persistent-warning escalation / confidence gate) ---
+    analysis_cooldown_minutes = db.Column(db.Integer, nullable=False, default=15, server_default="15")
+    persistent_warning_count = db.Column(db.Integer, nullable=False, default=3, server_default="3")
+    persistent_warning_window_minutes = db.Column(db.Integer, nullable=False, default=60, server_default="60")
+    alert_min_confidence = db.Column(db.Float, nullable=False, default=0.0, server_default="0")
+
     updated_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive, onupdate=utcnow_naive)
 
     @classmethod
@@ -107,5 +113,9 @@ class Settings(db.Model):
             "chunk_coalesce_window_seconds": self.chunk_coalesce_window_seconds,
             "restart_alert_count": self.restart_alert_count,
             "restart_alert_window_minutes": self.restart_alert_window_minutes,
+            "analysis_cooldown_minutes": self.analysis_cooldown_minutes,
+            "persistent_warning_count": self.persistent_warning_count,
+            "persistent_warning_window_minutes": self.persistent_warning_window_minutes,
+            "alert_min_confidence": self.alert_min_confidence,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
