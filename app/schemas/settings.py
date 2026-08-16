@@ -25,6 +25,8 @@ ALLOWED_SETTINGS_FIELDS = frozenset({
     "keyword_flush_delay_lines", "chunk_coalesce_window_seconds",
     "alert_min_classification", "event_retention_days",
     "restart_alert_count", "restart_alert_window_minutes",
+    "analysis_cooldown_minutes", "persistent_warning_count",
+    "persistent_warning_window_minutes", "alert_min_confidence",
 })
 
 
@@ -71,6 +73,10 @@ class SettingsSchema(BaseModel):
     chunk_coalesce_window_seconds: int | None = None
     restart_alert_count: int | None = None
     restart_alert_window_minutes: int | None = None
+    analysis_cooldown_minutes: int | None = None
+    persistent_warning_count: int | None = None
+    persistent_warning_window_minutes: int | None = None
+    alert_min_confidence: float | None = None
     updated_at: datetime | None = None
 
     @field_serializer("llm_api_key", "telegram_token")
@@ -113,6 +119,10 @@ class UpdateSettingsBody(BaseModel):
     chunk_coalesce_window_seconds: int | None = Field(default=None, ge=0)
     restart_alert_count: int | None = Field(default=None, ge=1)
     restart_alert_window_minutes: int | None = Field(default=None, ge=1)
+    analysis_cooldown_minutes: int | None = Field(default=None, ge=0)
+    persistent_warning_count: int | None = Field(default=None, ge=0)
+    persistent_warning_window_minutes: int | None = Field(default=None, ge=1)
+    alert_min_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
 
     @field_validator("llm_extra_request_json")
     @classmethod

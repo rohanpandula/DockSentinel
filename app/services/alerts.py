@@ -86,6 +86,28 @@ class AlertService:
         reply_markup = self._build_keyboard(event.id)
         return self.strategy.send(message, config, reply_markup=reply_markup)
 
+    def maybe_send_escalation(
+        self, event: "AnalysisEvent", config: AlertConfig, count: int, window_minutes: int
+    ) -> tuple[bool, Optional[str], Optional[int]]:
+        """Persistent-warning escalation: same body/keyboard as a normal alert with a
+        "PERSISTENT WARNING" header on top. Honours the rejected-issue suppression and
+        the global rate limit (the per-container cooldown is checked by the caller).
+        Returns (sent, error, telegram_message_id). Does NOT commit."""
+        now = utcnow_naive()
+        if self.issue_repo is not None and event.container_name:
+            rejected_since = now - timedelta(hours=REJECTED_ISSUE_SUPPRESS_HOURS)
+            if self.issue_repo.has_recent_rejected(event.container_name, rejected_since):
+                return False, "suppressed: recently rejected", None
+
+        window_since = now - timedelta(seconds=config.rate_limit_window_seconds)
+        if self.event_repo.count_recent_alerts(window_since) >= config.rate_limit_count:
+            return False, "global rate limit exceeded", None
+
+        header = f"⚠️ PERSISTENT WARNING · {event.container_name} · {count} in {window_minutes} min"
+        message = f"{header}\n{self._format_message(event)}"
+        reply_markup = self._build_keyboard(event.id)
+        return self.strategy.send(message, config, reply_markup=reply_markup)
+
     def send_plain(self, text: str, config: AlertConfig) -> tuple[bool, Optional[str], Optional[int]]:
         """Send a keyboard-less text alert through the same strategy, honouring
         the global rate limit (but not the per-chunk cooldown). Does NOT commit."""

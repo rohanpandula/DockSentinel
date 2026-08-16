@@ -20,6 +20,7 @@ EVENT_STATUSES: tuple[str, ...] = (
     "analyzed",
     "skipped",
     "dedup_skipped",
+    "analysis_cooldown",
     "rate_limited",
     "queued",
     "parse_error",
@@ -50,7 +51,7 @@ def dashboard():
                 counts[event.classification] += 1
         elif event.status in {"parse_error", "llm_error"}:
             counts["errors"] += 1
-        elif event.status in {"skipped", "dedup_skipped", "rate_limited", "excluded", "queued"}:
+        elif event.status in {"skipped", "dedup_skipped", "analysis_cooldown", "rate_limited", "excluded", "queued"}:
             counts["skipped"] += 1
         # container_event rows (die/oom/restart) are lifecycle signals, not chunks — not counted here.
 

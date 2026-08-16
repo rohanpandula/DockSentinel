@@ -199,7 +199,7 @@ def test_warning_alerts_when_threshold_lowered(tmp_path, monkeypatch):
         assert event.alert_sent is None or event.alert_sent is False
         Settings.singleton().alert_min_classification = "warning"
         db.session.commit()
-        event2 = sentinel.process_chunk(container_id="c1", container_name="api", chunk_text="error thing 2")
+        event2 = sentinel.process_chunk(container_id="c1", container_name="api", chunk_text="timeout waiting for upstream")
         assert event2.alert_sent is True
         assert len(strategy.sent) == 1
 
