@@ -107,13 +107,15 @@ function wireAnalyzeForm() {
   const custom = form.querySelector("[data-analyze-custom]");
   if (!select || !custom) return;
 
-  const reveal = () => {
+  // focusIt=false on first paint: focusing here scrolls the whole page down to
+  // the Analyze-now card, which wrecks the glance path on the Now page.
+  const reveal = (focusIt) => {
     const isOther = select.value === "__other__";
     custom.hidden = !isOther;
-    if (isOther) custom.focus();
+    if (isOther && focusIt) custom.focus();
   };
 
-  select.addEventListener("change", reveal);
+  select.addEventListener("change", () => reveal(true));
 
   form.addEventListener("submit", (event) => {
     if (select.value === "__other__") {
@@ -130,7 +132,7 @@ function wireAnalyzeForm() {
     }
   });
 
-  reveal();
+  reveal(false);
 }
 
 function formatBytes(n) {
