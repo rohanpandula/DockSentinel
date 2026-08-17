@@ -310,7 +310,11 @@ class SentinelService:
             f"🔁 RESTART STORM · {event.container_name} · {exits} exits in {window_minutes} min"
             f" · last exit code {exit_code if exit_code is not None else '?'}"
         )
-        sent, error, _ = self.alert_service.send_plain(text, AlertConfig.from_settings(settings))
+        # The container name is what lets the incident layer (and the mute gate)
+        # recognise repeat storms on the same container as one problem.
+        sent, error, _ = self.alert_service.send_plain(
+            text, AlertConfig.from_settings(settings), container_name=event.container_name
+        )
         event.alert_sent = sent
         event.alert_error = error
 

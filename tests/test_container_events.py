@@ -150,7 +150,11 @@ def test_restart_storm_alerts_once_at_threshold_and_respects_cooldown(app, conta
 
         e3 = sentinel.handle_container_event("c1", "web", "die", {"exitCode": 137})
         assert e3.alert_sent is True
-        assert strategy.sent == ["🔁 RESTART STORM · web · 3 exits in 10 min · last exit code 137"]
+        # The storm routes through the incident layer, which appends the
+        # "incident #<id>" marker line every message body carries.
+        assert strategy.sent == [
+            "🔁 RESTART STORM · web · 3 exits in 10 min · last exit code 137\nincident #1"
+        ]
 
         # Fourth exit inside the cooldown: no second alert.
         e4 = sentinel.handle_container_event("c1", "web", "die", {"exitCode": 1})
