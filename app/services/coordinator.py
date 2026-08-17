@@ -8,6 +8,7 @@ from datetime import timedelta
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 
 from app.models import SentinelState, Settings
 from app.services.docker_watcher import DockerWatcher
@@ -27,6 +28,7 @@ class RuntimeCoordinator:
         telegram_bot=None,
         telegram_notifier=None,
         event_repo=None,
+        incident_service=None,
     ) -> None:
         self.app = app
         self.sentinel_service = sentinel_service
@@ -34,6 +36,7 @@ class RuntimeCoordinator:
         self.telegram_bot = telegram_bot
         self.telegram_notifier = telegram_notifier
         self.event_repo = event_repo
+        self.incident_service = incident_service
 
         self._lock_fd = None
         self._scheduler: BackgroundScheduler | None = None
@@ -113,6 +116,20 @@ class RuntimeCoordinator:
             except Exception:
                 LOGGER.warning("analysis event prune failed", exc_info=True)
 
+    def _run_resolve_incidents_job(self) -> None:
+        """Close incidents that have gone quiet (edit their message, post the
+        resolve notice). Best effort: a failure here must never kill the
+        scheduler thread."""
+        if self.incident_service is None:
+            return
+        with self.app.app_context():
+            try:
+                resolved = self.incident_service.resolve_stale(utcnow_naive())
+                if resolved:
+                    LOGGER.info("auto-resolved %d stale incidents", len(resolved))
+            except Exception:
+                LOGGER.warning("incident auto-resolve failed", exc_info=True)
+
     def refresh_schedule(self) -> None:
         if self._scheduler is None:
             return
@@ -131,6 +148,14 @@ class RuntimeCoordinator:
             self._run_prune_job,
             trigger=CronTrigger(hour=3, minute=15),
             id="prune-events",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
+        self._scheduler.add_job(
+            self._run_resolve_incidents_job,
+            trigger=IntervalTrigger(minutes=5),
+            id="resolve-incidents",
             replace_existing=True,
             max_instances=1,
             coalesce=True,

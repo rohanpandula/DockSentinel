@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from app.repositories.analysis_events import AnalysisEventRepository
     from app.repositories.local_issues import LocalIssueRepository
     from app.repositories.container_mutes import ContainerMuteRepository
+    from app.services.incidents import IncidentService
 
 REJECTED_ISSUE_SUPPRESS_HOURS = 24
 
@@ -55,11 +56,41 @@ class AlertService:
         event_repo: "AnalysisEventRepository",
         issue_repo: "LocalIssueRepository | None" = None,
         mute_repo: "ContainerMuteRepository | None" = None,
+        incident_service: "IncidentService | None" = None,
     ) -> None:
         self.strategy = strategy
         self.event_repo = event_repo
         self.issue_repo = issue_repo
         self.mute_repo = mute_repo
+        # Optional. When None the service behaves exactly as it did before the
+        # incident layer existed: every alert-worthy event gets its own message.
+        self.incident_service = incident_service
+
+    def _notifier(self) -> Any:
+        """The notifier behind the strategy, used by the incident layer to edit
+        messages in place. Tests may attach one to their fake strategy."""
+        return getattr(self.strategy, "notifier", None)
+
+    def _dispatch(
+        self,
+        event: "AnalysisEvent",
+        config: AlertConfig,
+        message: str,
+        reply_markup: Optional[dict[str, Any]],
+    ) -> tuple[bool, Optional[str], Optional[int]]:
+        """The single point where an alert-worthy event becomes a message.
+        Every gate has already run by the time we get here; the incident layer
+        only decides whether that means a new message or an in-place edit."""
+        if self.incident_service is not None:
+            return self.incident_service.notify(
+                event,
+                config,
+                message,
+                reply_markup=reply_markup,
+                strategy=self.strategy,
+                notifier=self._notifier(),
+            )
+        return self.strategy.send(message, config, reply_markup=reply_markup)
 
     def _muted_reason(self, container_name: Optional[str], now) -> Optional[str]:
         if self.mute_repo is None or not container_name:
@@ -98,7 +129,7 @@ class AlertService:
 
         message = self._format_message(event)
         reply_markup = self._build_keyboard(event.id)
-        return self.strategy.send(message, config, reply_markup=reply_markup)
+        return self._dispatch(event, config, message, reply_markup)
 
     def maybe_send_escalation(
         self, event: "AnalysisEvent", config: AlertConfig, count: int, window_minutes: int
@@ -123,7 +154,7 @@ class AlertService:
         header = f"⚠️ PERSISTENT WARNING · {event.container_name} · {count} in {window_minutes} min"
         message = f"{header}\n{self._format_message(event)}"
         reply_markup = self._build_keyboard(event.id)
-        return self.strategy.send(message, config, reply_markup=reply_markup)
+        return self._dispatch(event, config, message, reply_markup)
 
     def send_plain(
         self, text: str, config: AlertConfig, container_name: Optional[str] = None
@@ -136,6 +167,17 @@ class AlertService:
         window_since = utcnow_naive() - timedelta(seconds=config.rate_limit_window_seconds)
         if self.event_repo.count_recent_alerts(window_since) >= config.rate_limit_count:
             return False, "global rate limit exceeded", None
+        if self.incident_service is not None and container_name:
+            return self.incident_service.notify_for(
+                container_name=container_name,
+                classification="critical",
+                summary="restart storm",
+                config=config,
+                message=text,
+                reply_markup=None,
+                strategy=self.strategy,
+                notifier=self._notifier(),
+            )
         return self.strategy.send(text, config, reply_markup=None)
 
     @staticmethod

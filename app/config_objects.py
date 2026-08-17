@@ -62,6 +62,23 @@ class AlertConfig:
 
 
 @dataclass(frozen=True)
+class IncidentConfig:
+    """How the incident layer notifies. Never affects alert-worthiness."""
+
+    resolve_after_minutes: int = 30
+    reminder_hours: int = 0
+    notify_on_resolve: bool = True
+
+    @classmethod
+    def from_settings(cls, s: "Settings") -> "IncidentConfig":
+        return cls(
+            resolve_after_minutes=max(1, int(getattr(s, "incident_resolve_after_minutes", 30) or 30)),
+            reminder_hours=max(0, int(getattr(s, "incident_reminder_hours", 0) or 0)),
+            notify_on_resolve=bool(getattr(s, "incident_notify_on_resolve", True)),
+        )
+
+
+@dataclass(frozen=True)
 class CallReductionConfig:
     dedup_window_seconds: int
     container_rate_limit_count: int

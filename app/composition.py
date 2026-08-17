@@ -8,6 +8,7 @@ from app.container import ServiceContainer
 from app.repositories.analysis_events import AnalysisEventRepository
 from app.repositories.container_mutes import ContainerMuteRepository
 from app.repositories.exclusions import ExclusionRepository
+from app.repositories.incidents import IncidentRepository
 from app.repositories.prompts import PromptRepository
 from app.repositories.reports import ReportRepository
 from app.repositories.settings import SettingsRepository
@@ -15,6 +16,7 @@ from app.services.alerts import AlertService, TelegramAlertStrategy
 from app.services.briefing import BriefingService
 from app.services.cli_backends import CLIBackendRunner
 from app.services.coordinator import RuntimeCoordinator
+from app.services.incidents import IncidentService
 from app.services.llm_call import LLMCallService
 from app.services.llm_client import LLMClient
 from app.repositories.local_issues import LocalIssueRepository
@@ -47,10 +49,18 @@ def build_container(app: Flask) -> ServiceContainer:
     exclusion_repo = ExclusionRepository()
     issue_repo = LocalIssueRepository()
     mute_repo = ContainerMuteRepository()
+    incident_repo = IncidentRepository()
 
     alert_strategy = TelegramAlertStrategy(telegram_notifier)
+    incident_service = IncidentService(
+        repo=incident_repo, notifier=telegram_notifier, strategy=alert_strategy
+    )
     alert_service = AlertService(
-        strategy=alert_strategy, event_repo=event_repo, issue_repo=issue_repo, mute_repo=mute_repo
+        strategy=alert_strategy,
+        event_repo=event_repo,
+        issue_repo=issue_repo,
+        mute_repo=mute_repo,
+        incident_service=incident_service,
     )
 
     sentinel_service = SentinelService(
@@ -86,6 +96,7 @@ def build_container(app: Flask) -> ServiceContainer:
         telegram_bot=telegram_bot,
         telegram_notifier=telegram_notifier,
         event_repo=event_repo,
+        incident_service=incident_service,
     )
 
     return ServiceContainer(
@@ -106,4 +117,6 @@ def build_container(app: Flask) -> ServiceContainer:
         report_repo=report_repo,
         exclusion_repo=exclusion_repo,
         mute_repo=mute_repo,
+        incident_repo=incident_repo,
+        incident_service=incident_service,
     )

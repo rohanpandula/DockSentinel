@@ -27,6 +27,8 @@ ALLOWED_SETTINGS_FIELDS = frozenset({
     "restart_alert_count", "restart_alert_window_minutes",
     "analysis_cooldown_minutes", "persistent_warning_count",
     "persistent_warning_window_minutes", "alert_min_confidence",
+    "incident_resolve_after_minutes", "incident_reminder_hours",
+    "incident_notify_on_resolve",
 })
 
 
@@ -77,6 +79,9 @@ class SettingsSchema(BaseModel):
     persistent_warning_count: int | None = None
     persistent_warning_window_minutes: int | None = None
     alert_min_confidence: float | None = None
+    incident_resolve_after_minutes: int | None = None
+    incident_reminder_hours: int | None = None
+    incident_notify_on_resolve: bool | None = None
     updated_at: datetime | None = None
 
     @field_serializer("llm_api_key", "telegram_token")
@@ -123,6 +128,9 @@ class UpdateSettingsBody(BaseModel):
     persistent_warning_count: int | None = Field(default=None, ge=0)
     persistent_warning_window_minutes: int | None = Field(default=None, ge=1)
     alert_min_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    incident_resolve_after_minutes: int | None = Field(default=None, ge=1)
+    incident_reminder_hours: int | None = Field(default=None, ge=0)
+    incident_notify_on_resolve: bool | None = None
 
     @field_validator("llm_extra_request_json")
     @classmethod

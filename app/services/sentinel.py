@@ -12,12 +12,15 @@ import docker
 from app.config_objects import AlertConfig, LLMConfig
 from app.extensions import db
 from app.models import AnalysisEvent, PromptKey, PromptTemplate, SentinelState, Settings
+from app.services.incidents import CLASSIFICATION_RANK, classification_rank  # noqa: F401
 from app.services.llm_call import LLMCallService
 from app.services.log_buffer import LogBuffer
 from app.services.prefilter import Prefilter
 from app.time_utils import utcnow_naive
 
-CLASSIFICATION_RANK = {"noise": 0, "warning": 1, "critical": 2}
+# CLASSIFICATION_RANK / classification_rank now live in app.services.incidents so
+# the incident layer and the analysis pipeline share one severity ordering; they
+# are re-exported here for the existing importers.
 
 # A `die` arriving this soon after a kill(SIGTERM)/stop for the same container
 # name is an operator-initiated stop, not an incident.
@@ -36,10 +39,6 @@ _LEADING_TIMESTAMP_RE = re.compile(
     r"|\d{2}:\d{2}:\d{2}(?:[.,]\d+)?\s*"
     r")+"
 )
-
-
-def classification_rank(value: str | None) -> int:
-    return CLASSIFICATION_RANK.get((value or "").strip().lower(), -1)
 
 
 def chunk_similarity_tokens(text: str, max_lines: int = _SIMILARITY_LINES) -> set[str]:

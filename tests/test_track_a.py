@@ -141,8 +141,15 @@ def test_cooldown_does_not_cross_containers_or_expired_window(tmp_path, monkeypa
             e.created_at = utcnow_naive() - timedelta(minutes=60)
         db.session.commit()
         again = sentinel.process_chunk(container_id="c1", container_name="api", chunk_text="fatal error 3")
-        assert again.alert_sent is True
-        assert len(strategy.sent) == 3
+        # The cooldown gate is what this test guards, and it no longer suppresses:
+        # had it still been in force the error would read "duplicate alert
+        # suppressed by cooldown". Instead the event reaches the incident layer,
+        # which recognises the still-open "api" incident and folds this
+        # occurrence into the message already in the chat rather than pinging again.
+        assert again.alert_sent is False
+        assert again.alert_error.startswith("incident #")
+        assert "×2" in again.alert_error
+        assert len(strategy.sent) == 2
 
 
 def test_repo_find_recent_alert_for_container_ignores_unsent(tmp_path, monkeypatch):

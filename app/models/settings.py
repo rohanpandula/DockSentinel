@@ -68,6 +68,11 @@ class Settings(db.Model):
     persistent_warning_window_minutes = db.Column(db.Integer, nullable=False, default=60, server_default="60")
     alert_min_confidence = db.Column(db.Float, nullable=False, default=0.0, server_default="0")
 
+    # --- Incident layer (one message per problem, edited in place) ---
+    incident_resolve_after_minutes = db.Column(db.Integer, nullable=False, default=30, server_default="30")
+    incident_reminder_hours = db.Column(db.Integer, nullable=False, default=0, server_default="0")
+    incident_notify_on_resolve = db.Column(db.Boolean, nullable=False, default=True, server_default="1")
+
     updated_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive, onupdate=utcnow_naive)
 
     @classmethod
@@ -117,5 +122,8 @@ class Settings(db.Model):
             "persistent_warning_count": self.persistent_warning_count,
             "persistent_warning_window_minutes": self.persistent_warning_window_minutes,
             "alert_min_confidence": self.alert_min_confidence,
+            "incident_resolve_after_minutes": self.incident_resolve_after_minutes,
+            "incident_reminder_hours": self.incident_reminder_hours,
+            "incident_notify_on_resolve": self.incident_notify_on_resolve,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
