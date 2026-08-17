@@ -17,19 +17,25 @@ class Prefilter:
     def __init__(self, keywords: list[str]) -> None:
         self.keywords = [k.strip().lower() for k in keywords if k and k.strip()]
         # Pre-compile one word-boundary regex per keyword.
+        # Multi-word keywords ("out of memory") match as a phrase with any
+        # whitespace between the words.
         self._word_re: dict[str, re.Pattern[str]] = {
-            kw: re.compile(r"\b" + re.escape(kw) + r"\b", re.IGNORECASE)
+            kw: re.compile(r"\b" + self._phrase_pattern(kw) + r"\b", re.IGNORECASE)
             for kw in self.keywords
         }
         # Pre-compile one "benign JSON value" regex per keyword.
         # Matches patterns like: "error":0  "error": false  "error":null
         self._benign_re: dict[str, re.Pattern[str]] = {
             kw: re.compile(
-                r'"' + re.escape(kw) + r'"\s*:\s*(0|false|null)\b',
+                r'"' + self._phrase_pattern(kw) + r'"\s*:\s*(0|false|null)\b',
                 re.IGNORECASE,
             )
             for kw in self.keywords
         }
+
+    @staticmethod
+    def _phrase_pattern(keyword: str) -> str:
+        return r"\s+".join(re.escape(part) for part in keyword.split())
 
     def match(self, text: str) -> list[str]:
         hits: list[str] = []

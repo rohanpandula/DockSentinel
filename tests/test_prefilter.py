@@ -48,3 +48,26 @@ def test_prefilter_word_boundary_basic():
     pf = Prefilter(["error"])
     assert pf.match("An error occurred") == ["error"]
     assert pf.match("ERROR: disk full") == ["error"]
+
+
+def test_prefilter_multiword_phrase_matches_as_phrase():
+    pf = Prefilter(["out of memory", "oom"])
+    assert pf.match("kernel: Out of memory: Killed process 1234") == ["out of memory"]
+    assert pf.match("container ran out  of\tmemory") == ["out of memory"]
+    assert pf.match("out of disk, memory fine") == []
+    assert pf.match("oom-killer invoked") == ["oom"]
+    assert pf.match("zoom in") == []
+
+
+def test_default_keyword_list_covers_common_errors():
+    from app.models.settings import DEFAULT_KEYWORD_LIST
+
+    pf = Prefilter(DEFAULT_KEYWORD_LIST.split(","))
+    assert "traceback" in pf.match("Traceback (most recent call last):")
+    assert "failed" in pf.match("Failed to connect to db")
+    assert "denied" in pf.match("permission denied")
+    assert "killed" in pf.match("process killed")
+    assert "unhealthy" in pf.match("container is unhealthy")
+    assert "segfault" in pf.match("segfault at 0 ip 0000")
+    assert "out of memory" in pf.match("Out of memory: Killed process")
+    assert pf.match("timeout_ms=30 error_count=0") == []

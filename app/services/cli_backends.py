@@ -1,12 +1,47 @@
 from __future__ import annotations
 
+import logging
 import os
 import re
+import signal
 import subprocess
 import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
+
+
+LOGGER = logging.getLogger(__name__)
+
+# Environment handed to CLI backends. The prompt contains attacker-influenced
+# container logs and the CLIs are tool-capable agents, so they must not see the
+# app's own secrets (SECRET_KEY, DATABASE_URL, TELEGRAM_*, BASIC_AUTH_*, ...).
+# Only what a CLI needs to run and authenticate is passed through.
+_ENV_PASSTHROUGH_EXACT = frozenset({
+    "PATH", "HOME", "USER", "LOGNAME", "SHELL", "TERM", "LANG", "LC_ALL", "LC_CTYPE",
+    "TMPDIR", "TZ", "NODE_OPTIONS", "NODE_PATH", "NO_COLOR",
+    "PYTHONPATH", "PYTHONUNBUFFERED", "VIRTUAL_ENV",
+    # outbound-proxy / CA settings a homelab CLI may need to reach its API
+    "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy",
+    "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE", "NODE_EXTRA_CA_CERTS",
+})
+# Provider auth/config for the supported CLIs (claude, codex, gemini, ollama).
+_ENV_PASSTHROUGH_PREFIXES = (
+    "XDG_", "OLLAMA_", "CLAUDE_", "ANTHROPIC_", "CODEX_", "OPENAI_", "GEMINI_", "GOOGLE_",
+    "DOCKSENTINEL_CLI_",
+)
+_ENV_EXTRA_VAR = "DOCKSENTINEL_CLI_ENV_PASSTHROUGH"  # comma-separated extra names
+
+
+def build_backend_env(source: dict[str, str] | None = None) -> dict[str, str]:
+    source = os.environ if source is None else source
+    extra = {name.strip() for name in (source.get(_ENV_EXTRA_VAR) or "").split(",") if name.strip()}
+    env: dict[str, str] = {}
+    for key, value in source.items():
+        if key in _ENV_PASSTHROUGH_EXACT or key in extra or key.startswith(_ENV_PASSTHROUGH_PREFIXES):
+            env[key] = value
+    env.setdefault("PATH", "/usr/local/bin:/usr/bin:/bin")
+    return env
 
 
 @dataclass(slots=True)
@@ -35,6 +70,34 @@ class CLIBackendRunner:
             raise RuntimeError(f"backend script is not executable: {script}")
         return script
 
+    @staticmethod
+    def _run_script(script: Path, prompt: str, timeout: int, env: dict[str, str]) -> subprocess.CompletedProcess:
+        """Run the wrapper in its own process group so a timeout kills the real
+        CLI too (subprocess.run's timeout only kills the bash wrapper, leaving
+        claude/gemini/codex running — and still spending tokens)."""
+        proc = subprocess.Popen(
+            [str(script)],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=env,
+            start_new_session=True,
+        )
+        try:
+            stdout, stderr = proc.communicate(input=prompt, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            except PermissionError:
+                LOGGER.error("could not kill process group %s; killing wrapper only", proc.pid)
+                proc.kill()
+            proc.wait(timeout=5)
+            raise
+        return subprocess.CompletedProcess([str(script)], proc.returncode, stdout, stderr)
+
     def run(
         self,
         *,
@@ -56,16 +119,9 @@ class CLIBackendRunner:
 
             started = time.monotonic()
             try:
-                env = os.environ.copy()
+                env = build_backend_env()
                 env["DOCKSENTINEL_BACKEND"] = backend
-                completed = subprocess.run(
-                    [str(script)],
-                    input=prompt,
-                    text=True,
-                    capture_output=True,
-                    timeout=effective_timeout,
-                    env=env,
-                )
+                completed = self._run_script(script, prompt, effective_timeout, env)
             except subprocess.TimeoutExpired:
                 last_error = f"backend '{backend}' timed out after {effective_timeout}s"
                 continue

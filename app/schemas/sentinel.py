@@ -15,6 +15,7 @@ class SentinelStateSchema(BaseModel):
     started_at: datetime | None = None
     last_error: str | None = None
     llm_failure_count: int
+    llm_last_test_ok_at: datetime | None = None
     llm_last_failure_at: datetime | None = None
     updated_at: datetime | None = None
 

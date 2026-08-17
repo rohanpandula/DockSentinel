@@ -141,6 +141,34 @@ Tap behaviour:
 
 The bot uses long-polling (`getUpdates`) — **no webhook, no public URL, no tunnel required**. It works on a private LAN out of the box.
 
+## Incidents
+
+Coalescing merges chunks that arrive close together; **incidents** merge alerts that keep coming back. Repeated alerts sharing a signature (container + problem) are grouped into one `Incident` row instead of one Telegram message per occurrence: the first occurrence sends a message, every later occurrence edits that same message in place and bumps `occurrence_count`, and the incident auto-resolves once it has been quiet for a while. An incident is therefore "this thing is still broken", not "this happened once".
+
+Three settings control it (Settings → *Alerts & rate limits*, or `PUT /api/settings`):
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `incident_resolve_after_minutes` | `30` | Quiet window after the last occurrence before the incident auto-resolves. |
+| `incident_reminder_hours` | `0` | Re-ping the chat every N hours while an incident stays open. `0` disables reminders. |
+| `incident_notify_on_resolve` | `true` | Post a closing message when an incident resolves. |
+
+The **Incidents** page (`/incidents`, in the Monitor nav with the open count as a badge) is a master/detail view: open incidents first with occurrence count, duration, container and last-seen; the detail pane shows the timeline (first/last seen, `notify_count`) plus Resolve, Mute container 24 h, and links to the container drill-down and that container's events. Open incidents also appear at the top of the dashboard.
+
+API:
+
+```
+GET  /api/incidents                     # {"items": [...]} newest first; ?status=open|resolved&limit=1..500
+GET  /api/incidents/{id}                # incl. occurrence_count, duration_seconds, telegram_message_id
+POST /api/incidents/{id}/resolve        # 200 incident · 404 not found · 409 already resolved
+```
+
+Telegram commands (operator chat only):
+
+- `/incidents` — up to 10 open incidents as `#id · container · ×N · 42m · title`, or `No open incidents`.
+- `/resolve <id>` — marks an incident resolved and confirms in-thread.
+- `/mutes`, `/unmute <container>` — unchanged.
+
 ## Coalescing Noisy Containers
 
 Set `chunk_coalesce_window_seconds` (Settings → *Alerts & rate limits* or `PUT /api/settings`) to hold matched log chunks per container in a sliding window. Every new matching chunk resets the timer; when the window elapses without new arrivals, the batch ships as a single LLM call and produces **one** summarized alert instead of dozens. `0` disables; `300` (five minutes) is a good starting value for a noisy homelab.
@@ -165,23 +193,26 @@ Backend wrappers live in `llm-backends/` and follow a stdin/stdout contract: rea
 | `APP_PORT` | `5000` | Port Flask binds to inside the container |
 | `MDNS_ENABLED` | `false` | Publish `<hostname>.local` via zeroconf |
 | `MDNS_HOSTNAME` | `docksentinel` | Advertised hostname |
-| `MDNS_PORT` | `5000` | Port advertised in the mDNS service record |
+| `MDNS_PORT` | `80` | Port advertised in the mDNS service record (set it to `APP_PORT` if you change the port) |
+| `BASIC_AUTH_USER` | *(unset)* | With `BASIC_AUTH_PASSWORD`, require HTTP basic auth on every route except `/api/health` |
+| `BASIC_AUTH_PASSWORD` | *(unset)* | Password for basic auth (both vars must be set to enable) |
+| `DOCKSENTINEL_CLI_ENV_PASSTHROUGH` | *(unset)* | Comma-separated extra env var names to pass to CLI backends. By default only `PATH`/`HOME`/locale/proxy vars and `OPENAI_*`, `ANTHROPIC_*`, `CLAUDE_*`, `CODEX_*`, `GEMINI_*`, `GOOGLE_*`, `OLLAMA_*` reach the CLI — never the app's own secrets |
 
 ## API Endpoints
 
 ```
-GET    /api/health
-GET    /api/settings
-PUT    /api/settings
-POST   /api/settings/test-llm
+GET    /api/health                      # {"status": "ok", "runtime": {"runtime_status": "running"|"degraded"|..., ...}}
+GET    /api/settings                    # secrets masked as ********
+PUT    /api/settings                    # partial update; blank/masked secret = keep, null = clear
+POST   /api/settings/test-llm           # one-shot call using the SAVED settings (UI saves first)
 POST   /api/telegram/test
+GET    /api/ollama/models?base_url=     # list models on an Ollama host (http(s) only)
 
 GET    /api/sentinel/status
 POST   /api/sentinel/toggle
 POST   /api/sentinel/analyze-now
 
-GET    /api/events
-GET    /api/insights
+GET    /api/insights                    # analysis events; ?container=&classification=&start=&end=&sort=&limit=&offset=
 GET    /api/reports
 GET    /api/reports/{id}
 POST   /api/reports/generate
@@ -189,10 +220,20 @@ POST   /api/reports/generate
 GET    /api/issues
 GET    /api/issues/{id}
 PATCH  /api/issues/{id}
+POST   /api/issues/{id}/try-llm         # {"prompt": ..., "model"?, "base_url"?, "api_key"?, "transport"?, "cli_backend"?}
+                                        # a base_url override never receives the stored api_key
+
+GET    /api/incidents                   # {"items":[...]}; ?status=open|resolved&limit=1..500
+GET    /api/incidents/{id}              # + occurrence_count, duration_seconds, telegram_message_id
+POST   /api/incidents/{id}/resolve      # 404 not found · 409 already resolved
 
 GET    /api/exclusions
 POST   /api/exclusions
 DELETE /api/exclusions/{id}
+
+GET    /api/mutes                       # active per-container alert mutes
+PUT    /api/mutes/{container_name}      # {"hours": 1..8760 | null (indefinite), "reason"?: ...}
+DELETE /api/mutes/{container_name}
 
 GET    /api/prompts
 PUT    /api/prompts/{key}
@@ -200,6 +241,8 @@ POST   /api/prompts/{key}/reset
 ```
 
 Request/response bodies are validated by Pydantic v2 schemas (see `app/schemas/`). Paginated list endpoints accept `limit` and `offset`.
+
+`GET /api/health` returns HTTP 200 with `status: "ok"` whenever the process is up (liveness); LLM/parse failures are reported in `runtime.runtime_status` (`degraded`) and `runtime.llm_failure_count`, not in the top-level `status`, so the Docker `HEALTHCHECK` only fails when the app is unreachable.
 
 ## Project Layout
 
@@ -218,7 +261,7 @@ app/
   web/            Server-rendered routes
 llm-backends/     Pluggable CLI backend scripts (stdin → stdout)
 migrations/       Alembic migrations (SQLite-safe via batch mode)
-tests/            pytest suite (46 tests, 80% coverage gate)
+tests/            pytest suite (pytest suite, 80% coverage gate)
 Dockerfile
 docker-compose.yml            Default (local socket, host port 5050)
 docker-compose.unraid.example.yml  Reference for macvlan / LAN IP deploys
@@ -234,14 +277,11 @@ alembic.ini
 python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+alembic upgrade head          # creates ./data/docksentinel.db — required before the first run
 flask --app app run --debug
 ```
 
-SQLite lives at `./data/docksentinel.db` by default. Alembic runs on container startup (`alembic upgrade head`); for local dev run it manually after dependency changes:
-
-```bash
-alembic upgrade head
-```
+SQLite lives at `./data/docksentinel.db` by default. The Docker entrypoint runs `alembic upgrade head` on every start; for local dev you run it yourself — before the first `flask run` and again whenever you pull new migrations. (Tables are not auto-created outside `TESTING`.)
 
 ## Testing
 
@@ -251,7 +291,7 @@ pytest                     # with coverage report (gated at 80%)
 pytest --cov-report=html   # browse htmlcov/index.html
 ```
 
-The suite (46 tests) covers:
+The suite (137+ tests) covers:
 - API endpoints (health, settings, sentinel, reports, issues, prompts, exclusions)
 - Request/response schema parity and pagination
 - Sentinel pipeline — critical path, cooldown dedup, chunk dedup, per-container rate limiting
@@ -322,6 +362,8 @@ No `LICENSE` file is currently committed. Until one is added, default copyright 
 
 ## Security Notes
 
-- **Trusted-network only.** No authentication layer yet; anyone on your LAN can reach the UI and API.
+- **Set `BASIC_AUTH_USER` / `BASIC_AUTH_PASSWORD`** unless the app is only reachable from a trusted network. Without them anyone who can reach the port can change settings and read events.
+- **Secrets are write-only.** `GET /api/settings` and the Settings page return `********` for `llm_api_key`/`telegram_token`; sending a blank or masked value on write keeps the stored secret.
+- **Cross-site writes are rejected.** State-changing requests whose `Origin`/`Referer` host differs from the app's host get `403`, so a malicious web page can't drive the API from the operator's browser.
 - **Telegram bot privacy:** for group chats, disable *privacy mode* in @BotFather or the bot won't receive your callbacks. 1:1 chats work out of the box.
-- **Fail-closed defaults:** a misconfigured LLM or Telegram returns a clear error envelope and the health endpoint reports `degraded` — it does not silently swallow failures.
+- **Fail-closed defaults:** a misconfigured LLM or Telegram returns a clear error envelope and the health endpoint reports `runtime.runtime_status: degraded` — it does not silently swallow failures.

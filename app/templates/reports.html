@@ -1,27 +1,61 @@
 {% extends "base.html" %}
+{% from "_macros.html" import container_link %}
 {% block title %}DockSentinel — Reports{% endblock %}
 {% block content %}
-<div class="page-header">
+<div class="page-head">
   <div>
-    <h1 class="page-title">Reports</h1>
-    <p class="page-subtitle">Nightly health briefings generated from the day's classified events.</p>
+    <h1 class="page-head__title">Reports &amp; weekly review</h1>
+    <p class="page-head__sub">Nightly health briefings, plus the week's numbers so you can review issues and tune noise in one sitting.</p>
   </div>
-  <form method="post" action="{{ url_for('reports_generate') }}">
-    <button class="btn btn--primary">Generate now</button>
-  </form>
+  <div class="page-head__actions">
+    <form method="post" action="{{ url_for('reports_generate') }}">
+      <button class="btn btn--primary"><svg aria-hidden="true"><use href="#ico-doc"/></svg>Generate now</button>
+    </form>
+  </div>
 </div>
 
-<div class="grid" style="grid-template-columns: 300px 1fr; align-items: start;">
-  <section class="card">
-    <h2 class="card__title">Archive</h2>
-    <ul class="list-reset mt-md">
+<!-- ── J5: this week strip ────────────────────────────────────────────────── -->
+<section class="card card--pad review" aria-labelledby="review-title">
+  <div class="card__head">
+    <h2 class="card__title" id="review-title">Last 7 days</h2>
+    <span class="text-tertiary text-xs">{{ week.chunks }} chunks through the pipeline</span>
+  </div>
+  <div class="review__grid">
+    <a class="review__tile" href="{{ url_for('insights_page', outcome='alerted') }}"><b class="tabular text-ok">{{ week.alerts }}</b><span>alerts sent</span></a>
+    <a class="review__tile" href="{{ url_for('insights_page', classification='critical') }}"><b class="tabular text-critical">{{ week.critical }}</b><span>critical verdicts</span></a>
+    <a class="review__tile" href="{{ url_for('insights_page', classification='warning') }}"><b class="tabular text-warning">{{ week.warning }}</b><span>warning verdicts</span></a>
+    <a class="review__tile" href="{{ url_for('insights_page', outcome='suppressed') }}"><b class="tabular">{{ week.suppressed }}</b><span>alerts held back</span></a>
+    <a class="review__tile" href="{{ url_for('issues_page', status='open') }}"><b class="tabular">{{ issue_counts.get('open', 0) }}</b><span>open issues</span></a>
+    <a class="review__tile" href="{{ url_for('issues_page', status='discussing') }}"><b class="tabular">{{ issue_counts.get('discussing', 0) }}</b><span>discussing</span></a>
+  </div>
+  <div class="review__foot">
+    <span class="text-sm text-secondary">
+      {% if noisiest %}Noisiest before the LLM: {% for name, n in noisiest %}{{ container_link(name, 'text-mono') }} <span class="text-tertiary tabular">{{ n }}</span>{% if not loop.last %} · {% endif %}{% endfor %}{% else %}No prefilter noise recorded this week.{% endif %}
+    </span>
+    <span class="btn-row">
+      <a class="btn btn--sm" href="{{ url_for('issues_page', status='open') }}">Triage open issues</a>
+      <a class="btn btn--sm btn--ghost" href="{{ url_for('settings_page') }}#limits">Tune noise knobs</a>
+    </span>
+  </div>
+</section>
+
+<div class="split split--narrow mt-4">
+  <section class="card" aria-label="Report archive">
+    <div class="card__head">
+      <h2 class="card__title">Archive</h2>
+      <span class="text-tertiary text-xs">{{ reports|length }}</span>
+    </div>
+    <ul class="list-reset">
       {% for report in reports %}
+        {% set is_selected = selected_report and selected_report.id == report.id %}
         <li>
-          <a class="report-link" href="{{ url_for('reports_page', id=report.id) }}">
-            <span class="report-link__id">#{{ report.id }}</span>
-            <span class="text-mono text-secondary">{{ report.created_at }}</span>
-            {% if report.status == 'ok' or report.status == 'success' %}
+          <a class="row-link {% if is_selected %}row-link--active{% endif %}" {% if is_selected %}aria-current="true"{% endif %} href="{{ url_for('reports_page', id=report.id) }}">
+            <span class="row-link__id">#{{ report.id }}</span>
+            <span class="row-link__title text-mono text-sm text-secondary">{{ report.created_at|dt }}</span>
+            {% if report.status == 'generated' %}
               <span class="badge badge--ok">{{ report.status }}</span>
+            {% elif report.status == 'llm_error' %}
+              <span class="badge badge--critical" title="{{ report.error or 'LLM call failed; fallback report shown' }}">llm error</span>
             {% else %}
               <span class="badge badge--neutral">{{ report.status }}</span>
             {% endif %}
@@ -29,36 +63,57 @@
         </li>
       {% else %}
         <li>
-          <div class="empty">
-            <div class="empty__icon">∅</div>
+          <div class="empty empty--compact">
+            <div class="empty__icon"><svg aria-hidden="true"><use href="#ico-doc"/></svg></div>
             <p class="empty__title">No reports yet</p>
-            <p>Click "Generate now" or wait for the nightly scheduler.</p>
+            <p>The scheduler writes one each night at {{ '%02d:%02d' % (settings.nightly_hour, settings.nightly_minute) }}. You can also generate one right now.</p>
+            <form method="post" action="{{ url_for('reports_generate') }}">
+              <button class="btn btn--primary btn--sm">Generate now</button>
+            </form>
           </div>
         </li>
       {% endfor %}
     </ul>
   </section>
 
-  <section class="card card--padded">
+  <section class="card card--pad" aria-label="Report">
     {% if selected_report %}
-      <div class="card__header">
-        <h2 class="card__title card__title--lg">Report #{{ selected_report.id }}</h2>
-        <span class="text-mono text-tertiary">{{ selected_report.period_start }} → {{ selected_report.period_end }}</span>
+      <div class="detail-head">
+        <div>
+          <h2 class="detail-head__title">Report #{{ selected_report.id }}</h2>
+          <p class="detail-head__meta text-mono">{{ selected_report.period_start|dt }} → {{ selected_report.period_end|dt }}</p>
+        </div>
+        <div class="row row--end">
+          {% if selected_report.status == 'generated' %}<span class="badge badge--ok">generated</span>
+          {% elif selected_report.status == 'llm_error' %}<span class="badge badge--critical">llm error</span>
+          {% else %}<span class="badge badge--neutral">{{ selected_report.status }}</span>{% endif %}
+        </div>
       </div>
-      <div class="report-view">{{ selected_report.markdown_content }}</div>
+
+      <div class="meta-strip mt-4">
+        <span><span class="eyebrow">Model</span> <span class="text-mono">{{ selected_report.model or '—' }}</span></span>
+        <span class="text-tertiary">·</span>
+        <span><span class="eyebrow">Prompt</span> v{{ selected_report.prompt_version }} <a class="text-sm" href="{{ url_for('prompt_studio_page', key='NIGHTLY_REPORT') }}">edit</a></span>
+      </div>
+
+      {% if selected_report.status == 'llm_error' %}
+        <div class="banner banner--critical mt-4">
+          <svg class="banner__icon" aria-hidden="true"><use href="#ico-alert"/></svg>
+          <div class="banner__body">
+            <p><span class="banner__title">LLM call failed</span> — showing the fallback summary.</p>
+            {% if selected_report.error %}<p class="text-mono text-sm text-secondary mt-1 break">{{ selected_report.error }}</p>{% endif %}
+          </div>
+        </div>
+      {% endif %}
+
+      <article class="prose mt-4">{{ report_html }}</article>
     {% else %}
       <div class="empty">
-        <div class="empty__icon">◦</div>
+        <div class="empty__icon"><svg aria-hidden="true"><use href="#ico-doc"/></svg></div>
         <p class="empty__title">Pick a report</p>
-        <p>Select an entry from the archive to view the briefing.</p>
+        <p>Select an entry from the archive to read the briefing.</p>
       </div>
     {% endif %}
   </section>
 </div>
-
-<style>
-  @media (max-width: 900px) {
-    main .grid[style*="300px"] { grid-template-columns: 1fr !important; }
-  }
-</style>
 {% endblock %}

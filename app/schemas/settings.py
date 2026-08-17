@@ -1,8 +1,43 @@
 from __future__ import annotations
 
+import json
+
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
+
+SECRET_FIELDS = ("llm_api_key", "telegram_token")
+MASK = "********"
+
+# Fields an operator may change through the API or web form. Anything else on
+# the Settings row (id, updated_at, ...) is server-managed.
+ALLOWED_SETTINGS_FIELDS = frozenset({
+    "llm_base_url", "llm_api_key", "llm_model", "llm_provider", "llm_transport", "llm_extra_request_json",
+    "cli_backend", "cli_timeout_seconds", "cli_max_retries",
+    "telegram_token", "telegram_chat_id", "nightly_hour", "nightly_minute",
+    "max_input_chars", "max_input_tokens", "reserved_output_tokens",
+    "token_estimation_strategy", "keyword_list", "alert_cooldown_minutes",
+    "alert_rate_limit_count", "alert_rate_limit_window_seconds",
+    "llm_timeout_seconds", "llm_max_retries", "dedup_window_seconds",
+    "container_rate_limit_count", "container_rate_limit_window_seconds",
+    "keyword_flush_delay_lines", "chunk_coalesce_window_seconds",
+    "alert_min_classification", "event_retention_days",
+    "restart_alert_count", "restart_alert_window_minutes",
+    "analysis_cooldown_minutes", "persistent_warning_count",
+    "persistent_warning_window_minutes", "alert_min_confidence",
+    "incident_resolve_after_minutes", "incident_reminder_hours",
+    "incident_notify_on_resolve",
+})
+
+
+def mask_secret(value: str | None) -> str | None:
+    """Never echo secrets back; only reveal whether one is set."""
+    if value is None or value == "":
+        return value
+    return MASK
+
 
 
 class SettingsSchema(BaseModel):
@@ -13,6 +48,7 @@ class SettingsSchema(BaseModel):
     llm_model: str | None = None
     llm_provider: str | None = None
     llm_transport: str | None = None
+    llm_extra_request_json: str | None = None
     cli_backend: str | None = None
     cli_timeout_seconds: int | None = None
     cli_max_retries: int | None = None
@@ -28,6 +64,8 @@ class SettingsSchema(BaseModel):
     alert_cooldown_minutes: int | None = None
     alert_rate_limit_count: int | None = None
     alert_rate_limit_window_seconds: int | None = None
+    alert_min_classification: str | None = None
+    event_retention_days: int | None = None
     llm_timeout_seconds: int | None = None
     llm_max_retries: int | None = None
     dedup_window_seconds: int | None = None
@@ -35,7 +73,20 @@ class SettingsSchema(BaseModel):
     container_rate_limit_window_seconds: int | None = None
     keyword_flush_delay_lines: int | None = None
     chunk_coalesce_window_seconds: int | None = None
+    restart_alert_count: int | None = None
+    restart_alert_window_minutes: int | None = None
+    analysis_cooldown_minutes: int | None = None
+    persistent_warning_count: int | None = None
+    persistent_warning_window_minutes: int | None = None
+    alert_min_confidence: float | None = None
+    incident_resolve_after_minutes: int | None = None
+    incident_reminder_hours: int | None = None
+    incident_notify_on_resolve: bool | None = None
     updated_at: datetime | None = None
+
+    @field_serializer("llm_api_key", "telegram_token")
+    def _mask(self, value: str | None) -> str | None:
+        return mask_secret(value)
 
 
 class UpdateSettingsBody(BaseModel):
@@ -46,28 +97,53 @@ class UpdateSettingsBody(BaseModel):
     llm_model: str | None = None
     llm_provider: str | None = None
     llm_transport: str | None = None
+    llm_extra_request_json: str | None = None
     cli_backend: str | None = None
-    cli_timeout_seconds: int | None = None
-    cli_max_retries: int | None = None
+    cli_timeout_seconds: int | None = Field(default=None, ge=1)
+    cli_max_retries: int | None = Field(default=None, ge=0)
     telegram_token: str | None = None
     telegram_chat_id: str | None = None
-    nightly_hour: int | None = None
-    nightly_minute: int | None = None
-    max_input_chars: int | None = None
-    max_input_tokens: int | None = None
-    reserved_output_tokens: int | None = None
+    nightly_hour: int | None = Field(default=None, ge=0, le=23)
+    nightly_minute: int | None = Field(default=None, ge=0, le=59)
+    max_input_chars: int | None = Field(default=None, ge=1)
+    max_input_tokens: int | None = Field(default=None, ge=1)
+    reserved_output_tokens: int | None = Field(default=None, ge=1)
     token_estimation_strategy: str | None = None
     keyword_list: str | None = None
-    alert_cooldown_minutes: int | None = None
-    alert_rate_limit_count: int | None = None
-    alert_rate_limit_window_seconds: int | None = None
-    llm_timeout_seconds: int | None = None
-    llm_max_retries: int | None = None
-    dedup_window_seconds: int | None = None
-    container_rate_limit_count: int | None = None
-    container_rate_limit_window_seconds: int | None = None
-    keyword_flush_delay_lines: str | None = None
-    chunk_coalesce_window_seconds: int | None = None
+    alert_cooldown_minutes: int | None = Field(default=None, ge=0)
+    alert_rate_limit_count: int | None = Field(default=None, ge=0)
+    alert_rate_limit_window_seconds: int | None = Field(default=None, ge=1)
+    alert_min_classification: Literal["noise", "warning", "critical"] | None = None
+    event_retention_days: int | None = Field(default=None, ge=1)
+    llm_timeout_seconds: int | None = Field(default=None, ge=1)
+    llm_max_retries: int | None = Field(default=None, ge=0)
+    dedup_window_seconds: int | None = Field(default=None, ge=0)
+    container_rate_limit_count: int | None = Field(default=None, ge=0)
+    container_rate_limit_window_seconds: int | None = Field(default=None, ge=1)
+    keyword_flush_delay_lines: int | None = Field(default=None, ge=0)
+    chunk_coalesce_window_seconds: int | None = Field(default=None, ge=0)
+    restart_alert_count: int | None = Field(default=None, ge=1)
+    restart_alert_window_minutes: int | None = Field(default=None, ge=1)
+    analysis_cooldown_minutes: int | None = Field(default=None, ge=0)
+    persistent_warning_count: int | None = Field(default=None, ge=0)
+    persistent_warning_window_minutes: int | None = Field(default=None, ge=1)
+    alert_min_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    incident_resolve_after_minutes: int | None = Field(default=None, ge=1)
+    incident_reminder_hours: int | None = Field(default=None, ge=0)
+    incident_notify_on_resolve: bool | None = None
+
+    @field_validator("llm_extra_request_json")
+    @classmethod
+    def _validate_extra_json(cls, value: str | None) -> str | None:
+        if value is None or value.strip() == "":
+            return value
+        try:
+            parsed = json.loads(value)
+        except ValueError as exc:
+            raise ValueError("llm_extra_request_json must be a JSON object") from exc
+        if not isinstance(parsed, dict):
+            raise ValueError("llm_extra_request_json must be a JSON object")
+        return value.strip()
 
 
 class TestLLMResponse(BaseModel):

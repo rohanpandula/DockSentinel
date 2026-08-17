@@ -1,75 +1,278 @@
 {% extends "base.html" %}
+{% from "_macros.html" import sev_badge, container_link, outcome_badge, event_row %}
 {% block title %}DockSentinel — Events{% endblock %}
 {% block content %}
-<div class="page-header">
+{% set has_filter = filters.container or filters.classification or filters.status or filters.start or filters.outcome %}
+
+{% if spotlight_missing %}
+<div class="banner banner--warning" role="alert">
+  <svg class="banner__icon" aria-hidden="true"><use href="#ico-alert"/></svg>
+  <div class="banner__body"><span class="banner__title">Event not found.</span> <span class="text-secondary">It may have been pruned by retention. Showing the container's other events instead.</span></div>
+</div>
+{% endif %}
+
+{% if spotlight %}
+{% set ev = spotlight.event %}
+<!-- ── J2: event spotlight — landing from a Telegram alert ─────────────── -->
+<section class="card spot spot--{{ ev.classification or 'neutral' }}" aria-labelledby="spot-title" id="event-{{ ev.id }}">
+  <div class="spot__head">
+    <div class="spot__title-wrap">
+      <div class="row">
+        {{ sev_badge(ev) }}
+        {{ outcome_badge(spotlight.outcome) }}
+        {% if spotlight.mute %}<span class="badge badge--neutral badge--no-dot badge--muted">muted until {{ spotlight.mute.until_label() }}</span>{% endif %}
+        <span class="text-tertiary text-xs text-mono">event #{{ ev.id }} · {{ ev.created_at|dt }}</span>
+      </div>
+      <h1 class="spot__title" id="spot-title">{{ ev.summary or spotlight.status.label }}</h1>
+      <p class="spot__sub">{{ container_link(ev.container_name, 'text-mono') }}{% if ev.model %} · <span class="text-mono text-tertiary">{{ ev.model }}</span>{% endif %}{% if ev.confidence is not none %} · confidence <b class="tabular">{{ '%.2f' % ev.confidence }}</b>{% endif %}{% if ev.latency_ms %} · {{ ev.latency_ms }} ms{% endif %}</p>
+    </div>
+    <div class="spot__actions">
+      {% if ev.container_name %}
+      {% if spotlight.mute %}
+        <form method="post" action="{{ url_for('unmute_container', container_name=ev.container_name) }}">
+          <input type="hidden" name="next" value="{{ request.full_path }}" />
+          <button class="btn"><svg aria-hidden="true"><use href="#ico-bell"/></svg>Unmute</button>
+        </form>
+      {% else %}
+        <form method="post" action="{{ url_for('mute_container', container_name=ev.container_name, hours=24) }}">
+          <input type="hidden" name="next" value="{{ request.full_path }}" />
+          <button class="btn" title="Suppress Telegram alerts for this container for 24 hours"><svg aria-hidden="true"><use href="#ico-bell-off"/></svg>Mute 24h</button>
+        </form>
+      {% endif %}
+      {% if spotlight.issue_id %}
+        <a class="btn" href="{{ url_for('issues_page', id=spotlight.issue_id) }}"><svg aria-hidden="true"><use href="#ico-issue"/></svg>Open issue #{{ spotlight.issue_id }}</a>
+      {% else %}
+        <span class="btn" aria-disabled="true" title="Approve / Reject / Discuss the alert in Telegram to open an issue"><svg aria-hidden="true"><use href="#ico-issue"/></svg>No issue yet</span>
+      {% endif %}
+      <form method="post" action="{{ url_for('sentinel_analyze_from_ui') }}">
+        <input type="hidden" name="container" value="{{ ev.container_name }}" />
+        <button class="btn btn--primary" title="Fetch the container's latest logs and ask the LLM again"><svg aria-hidden="true"><use href="#ico-bolt"/></svg>Analyze again</button>
+      </form>
+      <a class="btn btn--ghost" href="{{ url_for('container_page', name=ev.container_name) }}">Container<svg aria-hidden="true"><use href="#ico-arrow"/></svg></a>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="spot__grid">
+    <div class="spot__col">
+      <div class="spot__block">
+        <div class="eyebrow">What happened</div>
+        <p class="spot__p">{{ spotlight.status.why }}</p>
+        {% if ev.llm_error %}<p class="text-mono text-critical text-sm break">{{ ev.llm_error }}</p>{% endif %}
+        {% if ev.parse_error %}<p class="text-mono text-critical text-sm break">{{ ev.parse_error }}</p>{% endif %}
+      </div>
+      <div class="spot__block">
+        <div class="eyebrow">Alert outcome</div>
+        <p class="spot__p">
+          {% if spotlight.outcome.kind == 'sent' %}<span class="text-ok">Sent to Telegram.</span>
+          {% else %}<b>{{ spotlight.outcome.label }}</b>{% if spotlight.outcome.why %} — {{ spotlight.outcome.why }}{% endif %}
+            {% if spotlight.outcome.anchor %} <a class="text-sm" href="{{ url_for('settings_page') }}#{{ spotlight.outcome.anchor }}">tune this →</a>{% endif %}
+          {% endif %}
+        </p>
+      </div>
+      {% if ev.root_cause_hypothesis %}
+      <div class="spot__block">
+        <div class="eyebrow">Root cause (LLM hypothesis)</div>
+        <p class="spot__p">{{ ev.root_cause_hypothesis }}</p>
+      </div>
+      {% endif %}
+      {% if ev.fix_suggestion %}
+      <div class="spot__block">
+        <div class="eyebrow">Suggested fix <span class="text-tertiary" style="text-transform:none;letter-spacing:0;font-weight:500">— model-generated, verify before running</span></div>
+        <pre class="code-block code-block--fix">{{ ev.fix_suggestion }}</pre>
+      </div>
+      {% endif %}
+      <div class="spot__block">
+        <div class="eyebrow">Log excerpt{% if ev.matched_keywords %} <span class="text-tertiary" style="text-transform:none;letter-spacing:0;font-weight:500">— matched: <span class="text-mono">{{ ev.matched_keywords }}</span></span>{% endif %}</div>
+        <pre class="code-block">{{ ev.chunk_excerpt or '—' }}</pre>
+      </div>
+    </div>
+    <aside class="spot__side">
+      <div class="eyebrow mb-2">{{ ev.container_name }} · recent history</div>
+      {% if spotlight.history %}
+      <div class="evlist evlist--tight">
+        {% for h in spotlight.history %}{{ event_row(h, show_container=False) }}{% endfor %}
+      </div>
+      {% else %}
+      <p class="text-tertiary text-sm">No other events for this container.</p>
+      {% endif %}
+      <a class="btn btn--sm btn--ghost mt-3" href="{{ url_for('container_page', name=ev.container_name) }}">Trace pipeline for {{ ev.container_name }}<svg aria-hidden="true"><use href="#ico-arrow"/></svg></a>
+    </aside>
+  </div>
+</section>
+{% endif %}
+
+<div class="page-head {% if spotlight %}mt-6{% endif %}">
   <div>
-    <h1 class="page-title">Events</h1>
-    <p class="page-subtitle">Searchable archive of every classified event, with root-cause hypothesis and fix suggestion.</p>
+    <h1 class="page-head__title">{% if spotlight %}More events{% else %}Events{% endif %}</h1>
+    <p class="page-head__sub">Every log chunk the pipeline saw, with where it stopped and why. Expand a row for the verdict, fix and excerpt.</p>
+  </div>
+  <div class="page-head__actions">
+    <span class="text-tertiary text-sm">{{ events|length }} shown{% if events|length >= 200 %} (capped){% endif %}</span>
   </div>
 </div>
 
-<section class="card card--padded">
-  <form method="get">
-    <div class="field-grid" style="grid-template-columns: repeat(4, 1fr);">
-      <label class="field">
-        <span class="field__label">Container</span>
-        <input class="input mono" name="container" list="container-list" placeholder="any" />
-        <datalist id="container-list">
-          {% for c in containers %}<option value="{{ c }}"></option>{% endfor %}
-        </datalist>
-      </label>
-      <label class="field">
-        <span class="field__label">Severity</span>
-        <select class="select" name="classification">
-          <option value="">all</option>
-          <option value="critical">critical</option>
-          <option value="warning">warning</option>
-          <option value="noise">noise</option>
-        </select>
-      </label>
-      <label class="field">
-        <span class="field__label">Since</span>
-        <input class="input tabular" name="start" type="datetime-local" />
-      </label>
-      <label class="field" style="justify-content: flex-end;">
-        <span class="field__label">&nbsp;</span>
-        <button class="btn btn--primary">Filter</button>
-      </label>
-    </div>
-  </form>
-</section>
-
-<div class="stack mt-lg">
-  {% for e in events %}
-    <details class="disclosure">
-      <summary class="disclosure__summary">
-        <span class="table__time">{{ e.created_at }}</span>
-        <span class="table__container">{{ e.container_name }}</span>
-        {% if e.classification == 'critical' %}
-          <span class="badge badge--critical">critical</span>
-        {% elif e.classification == 'warning' %}
-          <span class="badge badge--warning">warning</span>
-        {% else %}
-          <span class="badge badge--noise">{{ e.classification or 'noise' }}</span>
-        {% endif %}
-        <span class="text-secondary" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ e.summary or e.status }}</span>
-      </summary>
-      <div class="disclosure__body">
-        <p><strong>Status</strong> — {{ e.status }}</p>
-        <p><strong>Root cause</strong> — {{ e.root_cause_hypothesis or '—' }}</p>
-        <p><strong>Fix suggestion</strong> — {{ e.fix_suggestion or '—' }}</p>
-        <p><strong>Confidence</strong> — <span class="tabular">{{ e.confidence if e.confidence is not none else '—' }}</span></p>
-        <pre class="code-block">{{ e.chunk_excerpt or '—' }}</pre>
-      </div>
-    </details>
-  {% else %}
-    <div class="card">
-      <div class="empty">
-        <div class="empty__icon">∅</div>
-        <p class="empty__title">No events match this filter</p>
-        <p>Try widening the time window or clearing the severity filter.</p>
-      </div>
-    </div>
+<div class="chips mb-4" role="group" aria-label="Quick filters">
+  {% set quick = [('', 'everything'), ('alerted', 'alerted'), ('suppressed', 'held back'), ('never', 'never reached LLM')] %}
+  {% for value, label in quick %}
+    {% set is_active = filters.outcome == value %}
+    <a class="chip {% if is_active %}chip--active{% endif %}" href="{{ url_for('insights_page', outcome=value or None, container=filters.container or None) }}">{{ label }}</a>
   {% endfor %}
+</div>
+
+<form method="get" class="card toolbar" role="search" aria-label="Filter events">
+  <input type="hidden" name="outcome" value="{{ filters.outcome }}" />
+  <label class="field">
+    <span class="field__label">Container</span>
+    <input class="input mono" name="container" list="container-list" placeholder="any" value="{{ filters.container }}" />
+    <datalist id="container-list">
+      {% for c in containers %}<option value="{{ c }}"></option>{% endfor %}
+    </datalist>
+  </label>
+  <label class="field">
+    <span class="field__label">Severity</span>
+    <select class="select" name="classification">
+      <option value="">all</option>
+      {% for c in ['critical', 'warning', 'noise'] %}
+        <option value="{{ c }}" {% if filters.classification == c %}selected{% endif %}>{{ c }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label class="field">
+    <span class="field__label">Pipeline stage</span>
+    <select class="select" name="status">
+      <option value="">all</option>
+      {% for s in statuses %}
+        <option value="{{ s }}" {% if filters.status == s %}selected{% endif %}>{{ s }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label class="field">
+    <span class="field__label">Since</span>
+    <input class="input tabular" name="start" type="datetime-local" value="{{ filters.start }}" />
+  </label>
+  <div class="toolbar__actions">
+    <button class="btn btn--primary"><svg aria-hidden="true"><use href="#ico-search"/></svg>Filter</button>
+    {% if has_filter %}<a class="btn btn--ghost" href="{{ url_for('insights_page') }}">Clear</a>{% endif %}
+  </div>
+</form>
+
+<div class="mt-4">
+  {% if events %}
+  <div class="event-list">
+    <div class="list-head" aria-hidden="true">
+      <span></span><span>Time</span><span>Container</span><span>Severity</span><span>Summary</span><span></span>
+    </div>
+    {% for e in events %}
+      {% set o = alert_outcome(e, settings) %}
+      <details class="disclosure" id="event-{{ e.id }}" {% if spotlight and spotlight.event.id == e.id %}open{% endif %} data-ts="{{ e.created_at.isoformat() if e.created_at else '' }}">
+        <summary class="disclosure__summary">
+          <svg class="disclosure__caret" aria-hidden="true"><use href="#ico-chevron"/></svg>
+          <span class="table__time">{{ e.created_at|dt }}</span>
+          <span class="table__container truncate" title="{{ e.container_name }}">{{ e.container_name }}</span>
+          {{ sev_badge(e) }}
+          <span class="disclosure__text">{{ e.summary or explain_status(e.status).label }}</span>
+          <span class="disclosure__flags">
+            {% if e.status not in ('analyzed', 'container_event') %}
+              <span class="badge badge--neutral badge--no-dot" title="{{ explain_status(e.status).why }}">{{ e.status }}</span>
+            {% endif %}
+            {% if e.alert_sent %}
+              <span class="badge badge--ok badge--no-dot" title="Telegram alert sent">alerted</span>
+            {% elif e.alert_error %}
+              <span class="badge badge--warning badge--no-dot" title="{{ e.alert_error }}">not alerted</span>
+            {% endif %}
+            {% if issue_by_event.get(e.id) %}
+              <a class="badge badge--warning badge--no-dot" href="{{ url_for('issues_page', id=issue_by_event[e.id]) }}">issue #{{ issue_by_event[e.id] }}</a>
+            {% endif %}
+            {% if muted_until.get(e.container_name) %}
+              <span class="badge badge--neutral badge--no-dot badge--muted" title="Alerts for this container are muted">muted until {{ muted_until[e.container_name] }}</span>
+            {% endif %}
+            <span class="evrow__new" data-new-marker hidden>new</span>
+          </span>
+        </summary>
+        <div class="disclosure__body">
+          <div class="why-line">
+            <svg aria-hidden="true"><use href="#ico-info"/></svg>
+            <span><b>{{ explain_status(e.status).label }}</b> — {{ explain_status(e.status).why }}
+              {% if e.status == 'analyzed' %}
+                {% if o.kind == 'sent' %}<span class="text-ok">Alert sent to Telegram.</span>
+                {% else %}<b>{{ o.label }}</b>{% if o.why %} — {{ o.why }}{% endif %}{% endif %}
+              {% endif %}
+              {% if explain_status(e.status).anchor or o.anchor %}<a class="text-sm" href="{{ url_for('settings_page') }}#{{ o.anchor or explain_status(e.status).anchor }}">tune →</a>{% endif %}
+            </span>
+          </div>
+          <dl class="disclosure__grid">
+            <div>
+              <dt>Status</dt>
+              <dd>{{ e.status }}{% if e.llm_error %} · <span class="text-mono text-critical">{{ e.llm_error }}</span>{% endif %}{% if e.parse_error %} · <span class="text-mono text-critical">{{ e.parse_error }}</span>{% endif %}</dd>
+            </div>
+            <div>
+              <dt>Alert</dt>
+              <dd>{% if e.alert_sent %}<span class="text-ok">sent to Telegram</span>{% elif e.alert_error %}<span class="text-secondary">{{ e.alert_error }}</span>{% else %}—{% endif %}</dd>
+            </div>
+            <div>
+              <dt>Confidence</dt>
+              <dd class="tabular">{{ e.confidence if e.confidence is not none else '—' }}</dd>
+            </div>
+            <div>
+              <dt>Issue</dt>
+              <dd>{% if issue_by_event.get(e.id) %}<a href="{{ url_for('issues_page', id=issue_by_event[e.id]) }}">#{{ issue_by_event[e.id] }}</a>{% else %}—{% endif %}</dd>
+            </div>
+            <div>
+              <dt>Model</dt>
+              <dd class="text-mono">{{ e.model or '—' }}{% if e.latency_ms %} · {{ e.latency_ms }} ms{% endif %}</dd>
+            </div>
+            <div>
+              <dt>Keywords</dt>
+              <dd class="text-mono">{{ e.matched_keywords or '—' }}</dd>
+            </div>
+          </dl>
+          <dl class="disclosure__grid" style="grid-template-columns: 1fr;">
+            <div>
+              <dt>Root cause</dt>
+              <dd>{{ e.root_cause_hypothesis or '—' }}</dd>
+            </div>
+            <div>
+              <dt>Fix suggestion</dt>
+              <dd>{{ e.fix_suggestion or '—' }}</dd>
+            </div>
+          </dl>
+          <div class="eyebrow mb-2">Log excerpt</div>
+          <pre class="code-block">{{ e.chunk_excerpt or '—' }}</pre>
+          {% if e.container_name %}
+          <div class="btn-row mt-3">
+            <a class="btn btn--sm" href="{{ url_for('insights_page', event=e.id, container=e.container_name) }}">Focus this event</a>
+            <a class="btn btn--sm btn--ghost" href="{{ url_for('container_page', name=e.container_name) }}">Trace {{ e.container_name }}</a>
+            {% if muted_until.get(e.container_name) %}
+              <form method="post" action="{{ url_for('unmute_container', container_name=e.container_name) }}">
+                <input type="hidden" name="next" value="{{ request.full_path }}" />
+                <button class="btn btn--sm">Unmute {{ e.container_name }}</button>
+              </form>
+            {% else %}
+              <form method="post" action="{{ url_for('mute_container', container_name=e.container_name, hours=24) }}">
+                <input type="hidden" name="next" value="{{ request.full_path }}" />
+                <button class="btn btn--sm btn--ghost" title="Suppress Telegram alerts for this container for 24 hours">Mute container 24h</button>
+              </form>
+            {% endif %}
+          </div>
+          {% endif %}
+        </div>
+      </details>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="card">
+    <div class="empty">
+      <div class="empty__icon"><svg aria-hidden="true"><use href="#ico-search"/></svg></div>
+      <p class="empty__title">{% if has_filter %}No events match this filter{% else %}No events yet{% endif %}</p>
+      <p>{% if has_filter %}Try widening the time window or clearing the severity/stage filter.{% else %}Start the sentinel from the Now page and events will appear here as logs are triaged.{% endif %}</p>
+      {% if has_filter %}
+        <a class="btn" href="{{ url_for('insights_page') }}">Clear filters</a>
+      {% else %}
+        <a class="btn btn--primary" href="{{ url_for('dashboard') }}">Go to Now</a>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
 </div>
 {% endblock %}

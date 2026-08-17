@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% from "_macros.html" import container_link, sev_badge %}
+{% block title %}DockSentinel — Incidents{% endblock %}
+
+{% macro incident_status_badge(i) -%}
+  {% if i.status == 'open' %}<span class="badge badge--critical">open</span>
+  {% else %}<span class="badge badge--ok badge--no-dot">resolved</span>{% endif %}
+{%- endmacro %}
+
+{% macro incident_row(i, selected) -%}
+  {% set is_selected = selected and selected.id == i.id %}
+  <li>
+    <a class="row-link {% if is_selected %}row-link--active{% endif %}" {% if is_selected %}aria-current="true"{% endif %}
+       href="{{ url_for('incidents_page', id=i.id, status=active_status or '') }}">
+      <span class="row-link__id">#{{ i.id }}</span>
+      <span class="row-link__title">
+        <span class="row-link__meta">
+          {{ i.container_name or '—' }} · ×{{ i.occurrence_count }} · {{ i.duration_label() }} · last seen {{ i.last_seen_at|dt('%m-%d %H:%M') }}
+        </span>
+        {{ i.title or i.signature }}
+      </span>
+      {{ sev_badge(i) }}
+    </a>
+  </li>
+{%- endmacro %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1 class="page-head__title">Incidents</h1>
+    <p class="page-head__sub">Repeated alerts about the same problem are grouped into one incident — one Telegram message edited in place while it keeps happening, auto-resolved after a quiet window. Fixed it already? Resolve it here.</p>
+  </div>
+  <nav class="chips" aria-label="Filter by status">
+    {% for value, label in [('', 'all'), ('open','open'), ('resolved','resolved')] %}
+      {% set is_active = (active_status or '') == value %}
+      <a class="chip {% if is_active %}chip--active{% endif %}" {% if is_active %}aria-current="true"{% endif %}
+         href="{{ url_for('incidents_page', status=value) if value else url_for('incidents_page') }}">
+        {{ label }}
+        {% if counts.get(value) %}<span class="chip__count">{{ counts.get(value) }}</span>{% endif %}
+      </a>
+    {% endfor %}
+  </nav>
+</div>
+
+{% if selected_missing %}
+<div class="banner banner--critical" role="alert">
+  <svg class="banner__icon" aria-hidden="true"><use href="#ico-alert"/></svg>
+  <div class="banner__body"><span class="banner__title">Incident not found.</span> <span class="text-secondary">It may have been pruned.</span></div>
+</div>
+{% endif %}
+
+<div class="split {% if selected %}split--detail{% endif %}">
+  <section class="card" aria-label="Incident list">
+    <div class="card__head">
+      <h2 class="card__title">Open incidents</h2>
+      <span class="text-tertiary text-xs">{{ open_incidents|length }}</span>
+    </div>
+    <ul class="list-reset">
+      {% for i in open_incidents %}
+        {{ incident_row(i, selected) }}
+      {% else %}
+        <li>
+          <div class="empty empty--compact">
+            <div class="empty__icon"><svg aria-hidden="true"><use href="#ico-shield"/></svg></div>
+            <p class="empty__title">No open incidents</p>
+            <p>Nothing is currently repeating. Alerts that fire more than once get grouped here.</p>
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+
+    {% if resolved_incidents %}
+    <div class="card__head">
+      <h2 class="card__title">Recently resolved</h2>
+      <span class="text-tertiary text-xs">{{ resolved_incidents|length }}</span>
+    </div>
+    <ul class="list-reset">
+      {% for i in resolved_incidents %}
+        {{ incident_row(i, selected) }}
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </section>
+
+  <section class="card card--pad" aria-label="Incident detail">
+    {% if selected %}
+      <a class="btn btn--ghost btn--sm split__back" href="{{ url_for('incidents_page', status=active_status or '') }}"><svg aria-hidden="true"><use href="#ico-back"/></svg>All incidents</a>
+      <div class="detail-head">
+        <div class="flex-1">
+          <h2 class="detail-head__title">#{{ selected.id }} · {{ selected.title or selected.signature }}</h2>
+          <p class="detail-head__meta">
+            {{ container_link(selected.container_name, 'text-mono') }} · signature <span class="text-mono">{{ selected.signature }}</span>
+          </p>
+        </div>
+        <div class="row row--end">
+          {{ incident_status_badge(selected) }}
+          {{ sev_badge(selected) }}
+        </div>
+      </div>
+
+      <!-- ── Timeline: how long, how often, how loud ────────────────────── -->
+      <div class="kv-tiles mt-4">
+        <div class="kv-tile"><span class="eyebrow">Occurrences</span><b class="tabular" data-incident-occurrences>{{ selected.occurrence_count }}</b><span class="text-tertiary text-xs">times grouped into this incident</span></div>
+        <div class="kv-tile"><span class="eyebrow">Duration</span><b class="tabular">{{ selected.duration_label() }}</b><span class="text-tertiary text-xs">{{ selected.duration_seconds() }} s first → last</span></div>
+        <div class="kv-tile"><span class="eyebrow">Notifications</span><b class="tabular">{{ selected.notify_count }}</b><span class="text-tertiary text-xs">{% if selected.telegram_message_id %}message {{ selected.telegram_message_id }}{% else %}not sent to Telegram{% endif %}</span></div>
+      </div>
+
+      <div class="meta-strip mt-4">
+        <span class="eyebrow">Timeline</span>
+        <span class="text-mono text-sm">first seen {{ selected.first_seen_at|dt }}</span>
+        <span class="text-tertiary">·</span>
+        <span class="text-mono text-sm">last seen {{ selected.last_seen_at|dt }}</span>
+        {% if selected.last_notified_at %}
+          <span class="text-tertiary">·</span>
+          <span class="text-mono text-sm">last notified {{ selected.last_notified_at|dt }}</span>
+        {% endif %}
+        {% if selected.resolved_at %}
+          <span class="text-tertiary">·</span>
+          <span class="text-mono text-sm">resolved {{ selected.resolved_at|dt }}</span>
+        {% endif %}
+      </div>
+
+      <div class="btn-row mt-4">
+        {% if selected.status == 'open' %}
+          <form method="post" action="{{ url_for('incidents_resolve', incident_id=selected.id) }}">
+            <button class="btn btn--primary"><svg aria-hidden="true"><use href="#ico-check"/></svg>Resolve</button>
+          </form>
+        {% else %}
+          <span class="inline-output inline-output--ok">Resolved {{ selected.resolved_at|dt }}.</span>
+        {% endif %}
+        {% if selected.container_name %}
+          <a class="btn btn--ghost" href="{{ url_for('container_page', name=selected.container_name) }}">Trace container<svg aria-hidden="true"><use href="#ico-arrow"/></svg></a>
+          <a class="btn btn--ghost" href="{{ url_for('insights_page') }}?container={{ selected.container_name|urlencode }}">Related events<svg aria-hidden="true"><use href="#ico-arrow"/></svg></a>
+        {% endif %}
+      </div>
+
+      {% if selected.container_name %}
+      <div class="btn-row mt-3" data-mute-controls>
+        {% if selected_mute %}
+          <span class="badge badge--neutral badge--no-dot badge--muted" title="Alerts for this container are muted">muted until {{ selected_mute.until_label() }}</span>
+          <form method="post" action="{{ url_for('unmute_container', container_name=selected.container_name) }}">
+            <input type="hidden" name="next" value="{{ url_for('incidents_page', id=selected.id) }}" />
+            <button class="btn btn--sm">Unmute</button>
+          </form>
+        {% else %}
+          <form method="post" action="{{ url_for('mute_container', container_name=selected.container_name, hours=24) }}">
+            <input type="hidden" name="next" value="{{ url_for('incidents_page', id=selected.id) }}" />
+            <button class="btn btn--sm btn--ghost" title="Suppress Telegram alerts for {{ selected.container_name }} for 24 hours">Mute container 24h</button>
+          </form>
+        {% endif %}
+      </div>
+      {% endif %}
+    {% else %}
+      <div class="empty">
+        <div class="empty__icon"><svg aria-hidden="true"><use href="#ico-alert"/></svg></div>
+        <p class="empty__title">Pick an incident</p>
+        <p>Select one to see how long it has been going, how many times it recurred, and to resolve or mute it.</p>
+      </div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}
