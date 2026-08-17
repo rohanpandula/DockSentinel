@@ -4,6 +4,9 @@ from app.extensions import db
 from app.time_utils import utcnow_naive
 
 
+INCIDENT_STATUSES: tuple[str, ...] = ("open", "resolved")
+
+
 class Incident(db.Model):
     """A deduplicated, long-lived problem.
 
@@ -35,6 +38,15 @@ class Incident(db.Model):
     last_notified_at = db.Column(db.DateTime, nullable=True)
     notify_count = db.Column(db.Integer, nullable=False, default=0, server_default="0")
 
+    # ── derived ────────────────────────────────────────────────
+    def duration_seconds(self) -> int:
+        if not self.first_seen_at or not self.last_seen_at:
+            return 0
+        return max(0, int((self.last_seen_at - self.first_seen_at).total_seconds()))
+
+    def duration_label(self) -> str:
+        return human_duration(self.duration_seconds())
+
     def is_open(self) -> bool:
         return (self.status or "open") == "open"
 
@@ -50,8 +62,24 @@ class Incident(db.Model):
             "last_seen_at": self.last_seen_at.isoformat() if self.last_seen_at else None,
             "resolved_at": self.resolved_at.isoformat() if self.resolved_at else None,
             "occurrence_count": self.occurrence_count,
+            "duration_seconds": self.duration_seconds(),
             "telegram_chat_id": self.telegram_chat_id,
             "telegram_message_id": self.telegram_message_id,
             "last_notified_at": self.last_notified_at.isoformat() if self.last_notified_at else None,
             "notify_count": self.notify_count,
         }
+
+
+def human_duration(seconds: int) -> str:
+    """`42m`, `3h 05m`, `2d 04h` — compact enough for a Telegram list row."""
+    seconds = max(0, int(seconds))
+    if seconds < 60:
+        return f"{seconds}s"
+    minutes, sec = divmod(seconds, 60)
+    if minutes < 60:
+        return f"{minutes}m"
+    hours, minutes = divmod(minutes, 60)
+    if hours < 24:
+        return f"{hours}h {minutes:02d}m"
+    days, hours = divmod(hours, 24)
+    return f"{days}d {hours:02d}h"

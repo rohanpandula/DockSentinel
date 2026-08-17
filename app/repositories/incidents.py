@@ -29,6 +29,13 @@ class IncidentRepository:
         db.session.flush()
         return incident
 
+    def list(self, status: str | None = None, limit: int = 100) -> list[Incident]:
+        """Newest-activity-first listing, optionally filtered by status (surface/API)."""
+        query = Incident.query
+        if status:
+            query = query.filter(Incident.status == status)
+        return query.order_by(Incident.last_seen_at.desc(), Incident.id.desc()).limit(limit).all()
+
     def list_open(self) -> list[Incident]:
         return Incident.query.filter_by(status="open").order_by(Incident.id.asc()).all()
 

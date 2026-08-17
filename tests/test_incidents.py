@@ -593,3 +593,40 @@ def test_incident_settings_defaults_and_api_round_trip(app, client):
     # bounds are enforced
     assert client.put("/api/settings", json={"incident_resolve_after_minutes": 0}).status_code == 400
     assert client.put("/api/settings", json={"incident_reminder_hours": -1}).status_code == 400
+
+
+def test_new_incident_message_carries_a_resolve_button(app, container):
+    """The operator can close an incident from the notification itself."""
+    from app.models import Settings
+    from app.extensions import db
+    from app.services.incidents import IncidentService
+    from app.config_objects import AlertConfig
+
+    class _Strategy:
+        def __init__(self):
+            self.markups = []
+
+        def send(self, message, config, reply_markup=None):
+            self.markups.append(reply_markup)
+            return True, None, 42
+
+    with app.app_context():
+        strategy = _Strategy()
+        svc = IncidentService(repo=container.incident_repo, strategy=strategy)
+        cfg = AlertConfig.from_settings(Settings.singleton())
+        svc.notify_for(
+            "web",
+            "critical",
+            "upstream refused",
+            cfg,
+            "🚨 CRITICAL · web",
+            reply_markup={"inline_keyboard": [[{"text": "✓ Approve", "callback_data": "approve:1"}]]},
+        )
+        db.session.commit()
+
+        rows = strategy.markups[0]["inline_keyboard"]
+        assert rows[0][0]["callback_data"] == "approve:1"  # existing buttons preserved
+        resolve = rows[-1][0]
+        assert resolve["text"] == "✅ Resolve"
+        incident_id = int(resolve["callback_data"].split(":")[1])
+        assert container.incident_repo.get(incident_id) is not None

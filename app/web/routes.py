@@ -10,7 +10,10 @@ from pydantic import ValidationError
 
 from app.extensions import db
 from app.models import ExclusionRule, LocalIssue, PromptKey, SentinelState
+from app.repositories import incident_queries
+from app.repositories.incidents import IncidentRepository
 from app.schemas.settings import ALLOWED_SETTINGS_FIELDS, MASK, SECRET_FIELDS, UpdateSettingsBody
+from app.services.incident_actions import resolve_incident
 from app.services.sentinel import classification_rank
 from app.time_utils import utcnow_naive
 from app.web.markdown_lite import render_markdown
@@ -41,6 +44,15 @@ EVENT_STATUSES: tuple[str, ...] = (
 
 SKIPPED_STATUSES = {"skipped", "dedup_skipped", "analysis_cooldown", "rate_limited", "excluded", "queued"}
 
+# Track-g owns the incident engine; the surface only needs reads + a resolve.
+_incident_repo = IncidentRepository()
+
+
+def incident_repo() -> IncidentRepository:
+    """Prefer the container-wired repo (track-g) and fall back to a local one."""
+    services = current_app.extensions.get("services")
+    return getattr(services, "incident_repo", None) or _incident_repo
+
 
 @bp.record_once
 def _register_jinja_globals(state):
@@ -58,7 +70,16 @@ def _inject_shell_state():
         shell = {"enabled": state.enabled, "degraded": degraded, "runtime": state.runtime_status}
     except Exception:  # pragma: no cover - only before tables exist
         shell = {"enabled": False, "degraded": False, "runtime": "unknown"}
-    return {"shell_state": shell, "explain_status": explain_status, "explain_suppression": explain_suppression}
+    try:
+        open_incidents = incident_queries.count_open()
+    except Exception:  # pragma: no cover - only before the incidents table exists
+        open_incidents = 0
+    return {
+        "shell_state": shell,
+        "open_incident_count": open_incidents,
+        "explain_status": explain_status,
+        "explain_suppression": explain_suppression,
+    }
 
 
 @bp.route("/", endpoint="index")
@@ -189,9 +210,11 @@ def dashboard():
 
     events = container.event_repo.get_recent(limit=12)
     latest_report = container.report_repo.get_latest()
+    open_incidents = incident_repo().list(status="open", limit=6)
 
     return render_template(
         "dashboard.html",
+        open_incidents=open_incidents,
         state=state,
         counts=counts,
         events=events,
@@ -607,6 +630,50 @@ def issues_set_status(issue_id: int):
             issue.status = new_status
             db.session.commit()
     return redirect(url_for("issues_page", id=issue_id))
+
+
+@bp.route("/incidents", endpoint="incidents_page")
+def incidents_page():
+    """Master/detail over the incident layer: what is still broken, for how long,
+    and how many times it has recurred — open first, resolved underneath."""
+    repo = incident_repo()
+    status = request.args.get("status") or None
+    if status not in {"open", "resolved"}:
+        status = None
+
+    open_incidents = repo.list(status="open", limit=200)
+    resolved_incidents = repo.list(status="resolved", limit=50) if status != "open" else []
+    if status == "resolved":
+        open_incidents = []
+    counts = incident_queries.count_by_status()
+
+    selected_id = request.args.get("id", type=int)
+    selected = repo.get(selected_id) if selected_id else None
+
+    selected_mute = None
+    if selected is not None and selected.container_name:
+        selected_mute = current_app.extensions["services"].mute_repo.get_active(
+            selected.container_name, utcnow_naive()
+        )
+
+    return render_template(
+        "incidents.html",
+        open_incidents=open_incidents,
+        resolved_incidents=resolved_incidents,
+        counts=counts,
+        selected=selected,
+        selected_mute=selected_mute,
+        selected_missing=bool(selected_id and selected is None),
+        active_status=status,
+    )
+
+
+@bp.route("/incidents/<int:incident_id>/resolve", methods=["POST"], endpoint="incidents_resolve")
+def incidents_resolve(incident_id: int):
+    incident = incident_repo().get(incident_id)
+    if incident is not None:
+        resolve_incident(incident)
+    return redirect(url_for("incidents_page", id=incident_id))
 
 
 @bp.route("/sentinel/toggle", methods=["POST"], endpoint="sentinel_toggle_from_ui")

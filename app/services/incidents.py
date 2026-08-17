@@ -116,6 +116,19 @@ def _first_line(text: str) -> str:
     return (text or "").splitlines()[0] if (text or "").strip() else ""
 
 
+def _with_resolve_button(
+    reply_markup: Optional[dict[str, Any]], incident_id: int | None
+) -> Optional[dict[str, Any]]:
+    """Append a "✅ Resolve" row so the operator can close the incident from the
+    notification itself. The incident id only exists once the row is flushed,
+    which is why the button is added here and not by AlertService."""
+    if incident_id is None:
+        return reply_markup
+    rows = list((reply_markup or {}).get("inline_keyboard", []))
+    rows.append([{"text": "✅ Resolve", "callback_data": f"resolve:{incident_id}"}])
+    return {"inline_keyboard": rows}
+
+
 class IncidentService:
     """Turns a stream of alert-worthy events into one message per problem.
 
@@ -202,7 +215,9 @@ class IncidentService:
         now: datetime,
     ) -> tuple[bool, Optional[str], Optional[int]]:
         sent, error, message_id = strategy.send(
-            self._with_marker(message, incident.id), config, reply_markup=reply_markup
+            self._with_marker(message, incident.id),
+            config,
+            reply_markup=_with_resolve_button(reply_markup, incident.id),
         )
         if sent:
             incident.notify_count = (incident.notify_count or 0) + 1
