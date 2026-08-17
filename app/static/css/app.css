@@ -163,6 +163,12 @@ code, pre, kbd, .mono, .text-mono { font-family: var(--font-mono); }
 .nav__link:hover { background: var(--bg-hover); color: var(--fg-primary); text-decoration: none; }
 .nav__link--active { background: var(--accent-muted); color: var(--accent-fg); }
 .nav__link--active svg { opacity: 1; }
+/* Open-incident count: the one nav item allowed to shout. */
+.nav__badge {
+  margin-left: auto; min-width: 20px; padding: 1px 6px; border-radius: var(--r-pill);
+  background: var(--critical-muted); color: var(--critical);
+  font-size: var(--fs-xs); font-weight: 700; text-align: center; font-variant-numeric: tabular-nums;
+}
 .nav__spacer { flex: 1; }
 .sidebar__foot { display: flex; flex-direction: column; gap: var(--s-2); padding-top: var(--s-3); border-top: 1px solid var(--border-subtle); }
 .sidebar__meta { font-size: var(--fs-xs); color: var(--fg-muted); padding: 0 8px; }
@@ -827,6 +833,13 @@ li:last-child > .row-link { border-bottom: 0; }
   .tabbar__item svg { width: 20px; height: 20px; }
   .tabbar__item:hover { text-decoration: none; color: var(--fg-primary); }
   .tabbar__item--active { color: var(--accent-fg); }
+  .tabbar__item { position: relative; }
+  .tabbar__badge {
+    position: absolute; top: 4px; left: 50%; margin-left: 4px;
+    min-width: 16px; padding: 0 4px; border-radius: var(--r-pill);
+    background: var(--critical); color: var(--bg-app);
+    font-size: 9.5px; line-height: 16px; font-weight: 700; text-align: center;
+  }
   .content { padding-bottom: calc(var(--tabbar-h) + var(--s-6)); }
   .settings__actions { bottom: calc(var(--tabbar-h) + var(--s-2)); }
   .settings__body { padding-bottom: calc(96px + var(--tabbar-h)); }

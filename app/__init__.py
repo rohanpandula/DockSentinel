@@ -32,6 +32,7 @@ def _ensure_sqlite_parent_dir(app: Flask, database_uri: str) -> None:
 def _register_blueprints(app: Flask) -> None:
     from app.api.exclusions import bp as exclusions_bp
     from app.api.health import bp as health_bp
+    from app.api.incidents import bp as incidents_bp
     from app.api.insights import bp as insights_bp
     from app.api.issues import bp as issues_bp
     from app.api.mutes import bp as mutes_bp
@@ -44,7 +45,7 @@ def _register_blueprints(app: Flask) -> None:
 
     for bp in (health_bp, settings_bp, exclusions_bp, prompts_bp,
                sentinel_bp, insights_bp, reports_bp, telegram_bp, issues_bp,
-               mutes_bp):
+               mutes_bp, incidents_bp):
         app.register_blueprint(bp)
     # Register web_bp with name="" so endpoints resolve without a "web." prefix
     # (preserves url_for("dashboard") etc. in templates — APP-03 guardrail).

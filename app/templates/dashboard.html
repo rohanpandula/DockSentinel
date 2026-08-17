@@ -23,6 +23,7 @@
   <div class="verdict__facts">
     <span class="verdict__fact"><b class="tabular">{{ active_containers|length }}</b> watched</span>
     <span class="verdict__fact"><b class="tabular">{{ counts.alerted }}</b> alerted today</span>
+    {% if open_incident_count %}<span class="verdict__fact"><a href="{{ url_for('incidents_page') }}"><b class="tabular">{{ open_incident_count }}</b> open incident{{ '' if open_incident_count == 1 else 's' }}</a></span>{% endif %}
     <span class="verdict__fact"><a href="{{ url_for('issues_page', status='open') }}"><b class="tabular">{{ open_issues }}</b> open issue{{ '' if open_issues == 1 else 's' }}</a></span>
     <span class="verdict__fact" data-since-pill hidden><b class="tabular" data-since-count>0</b> new since <span data-since-label></span></span>
     <span class="verdict__fact text-tertiary" title="Runtime status">{{ state.runtime_status }}{% if state.started_at %} · since {{ state.started_at|dt('%m-%d %H:%M') }}{% endif %}</span>
@@ -182,6 +183,32 @@
 
 <div class="grid grid--dash mt-4">
   <div class="stack">
+
+    <!-- ── Open incidents — the single most important thing on this page ── -->
+    {% if open_incidents %}
+    <section aria-labelledby="incidents-title" data-open-incidents>
+      <div class="section-head">
+        <h2 class="section-title" id="incidents-title">Open incidents</h2>
+        <a class="btn btn--ghost btn--sm" href="{{ url_for('incidents_page') }}">All incidents<svg aria-hidden="true"><use href="#ico-arrow"/></svg></a>
+      </div>
+      <div class="card attn">
+        {% for i in open_incidents %}
+          <a class="attn__row" href="{{ url_for('incidents_page', id=i.id) }}">
+            {{ sev_badge(i) }}
+            <span class="attn__body">
+              <span class="attn__container">{{ i.container_name or '—' }}</span>
+              <span class="attn__summary">{{ i.title or i.signature }}</span>
+              <span class="attn__why">
+                <span class="badge badge--critical badge--no-dot">×{{ i.occurrence_count }}</span>
+                <span class="text-tertiary">ongoing {{ i.duration_label() }} · first seen {{ i.first_seen_at|dt('%m-%d %H:%M') }}</span>
+              </span>
+            </span>
+            <span class="attn__time text-mono">{{ i.last_seen_at|dt('%H:%M') }}</span>
+          </a>
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
 
     <!-- ── Needs attention ──────────────────────────────────────────────── -->
     <section aria-labelledby="attn-title">

@@ -1,6 +1,7 @@
 from app.models.container_mute import ContainerMute
 from app.models.events import AnalysisEvent
 from app.models.exclusions import ExclusionRule
+from app.models.incident import INCIDENT_STATUSES, Incident, human_duration
 from app.models.local_issue import LocalIssue, LocalIssueAction, LocalIssueStatus
 from app.models.prompts import DEFAULT_PROMPTS, PromptKey, PromptTemplate
 from app.models.reports import DailyReport
@@ -12,6 +13,9 @@ __all__ = [
     "AnalysisEvent",
     "ContainerMute",
     "ExclusionRule",
+    "Incident",
+    "INCIDENT_STATUSES",
+    "human_duration",
     "LocalIssue",
     "LocalIssueAction",
     "LocalIssueStatus",

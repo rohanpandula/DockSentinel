@@ -21,18 +21,21 @@
   <body>
     {% set path = request.path %}
     {% set nav_items = [
-      ('dashboard', 'Now', path in ('/', '/dashboard'), 'ico-pulse'),
-      ('insights_page', 'Events', path.startswith('/insights') or path.startswith('/containers'), 'ico-list'),
-      ('issues_page', 'Issues', path.startswith('/issues'), 'ico-issue'),
-      ('reports_page', 'Reports', path.startswith('/reports'), 'ico-doc'),
+      ('dashboard', 'Now', path in ('/', '/dashboard'), 'ico-pulse', 0),
+      ('incidents_page', 'Incidents', path.startswith('/incidents'), 'ico-alert', open_incident_count|default(0)),
+      ('insights_page', 'Events', path.startswith('/insights') or path.startswith('/containers'), 'ico-list', 0),
+      ('issues_page', 'Issues', path.startswith('/issues'), 'ico-issue', 0),
+      ('reports_page', 'Reports', path.startswith('/reports'), 'ico-doc', 0),
     ] %}
     {% set nav_config = [
-      ('settings_page', 'Settings', path.startswith('/settings'), 'ico-sliders'),
-      ('exclusions_page', 'Exclusions', path.startswith('/exclusions'), 'ico-filter'),
-      ('prompt_studio_page', 'Prompts', path.startswith('/prompt'), 'ico-prompt'),
+      ('settings_page', 'Settings', path.startswith('/settings'), 'ico-sliders', 0),
+      ('exclusions_page', 'Exclusions', path.startswith('/exclusions'), 'ico-filter', 0),
+      ('prompt_studio_page', 'Prompts', path.startswith('/prompt'), 'ico-prompt', 0),
     ] %}
+    {# Mobile has five slots including "More": Reports lives behind it. #}
+    {% set nav_tabbar = nav_items|rejectattr('0', 'equalto', 'reports_page')|list %}
     {% set ns = namespace(current_label='DockSentinel') %}
-    {% for ep, label, active, ico in nav_items + nav_config %}{% if active %}{% set ns.current_label = label %}{% endif %}{% endfor %}
+    {% for ep, label, active, ico, badge in nav_items + nav_config %}{% if active %}{% set ns.current_label = label %}{% endif %}{% endfor %}
     {% if path.startswith('/containers') %}{% set ns.current_label = 'Container' %}{% endif %}
     {% set current_label = ns.current_label %}
     {% set shell_kind = 'stopped' if not shell_state.enabled else ('degraded' if shell_state.degraded else 'running') %}
@@ -109,13 +112,14 @@
 
         <nav class="nav" aria-label="Primary">
           <span class="nav__group">Monitor</span>
-          {% for ep, label, active, ico in nav_items %}
+          {% for ep, label, active, ico, badge in nav_items %}
             <a class="nav__link {% if active %}nav__link--active{% endif %}" href="{{ url_for(ep) }}" {% if active %}aria-current="page"{% endif %}>
               <svg aria-hidden="true"><use href="#{{ ico }}"/></svg><span>{{ label }}</span>
+              {% if badge %}<span class="nav__badge" title="{{ badge }} open">{{ badge }}</span>{% endif %}
             </a>
           {% endfor %}
           <span class="nav__group">Tune</span>
-          {% for ep, label, active, ico in nav_config %}
+          {% for ep, label, active, ico, badge in nav_config %}
             <a class="nav__link {% if active %}nav__link--active{% endif %}" href="{{ url_for(ep) }}" {% if active %}aria-current="page"{% endif %}>
               <svg aria-hidden="true"><use href="#{{ ico }}"/></svg><span>{{ label }}</span>
             </a>
@@ -142,9 +146,10 @@
       </div>
 
       <nav class="tabbar" aria-label="Primary (mobile)">
-        {% for ep, label, active, ico in nav_items %}
+        {% for ep, label, active, ico, badge in nav_tabbar %}
           <a class="tabbar__item {% if active %}tabbar__item--active{% endif %}" href="{{ url_for(ep) }}" {% if active %}aria-current="page"{% endif %}>
             <svg aria-hidden="true"><use href="#{{ ico }}"/></svg><span>{{ label }}</span>
+            {% if badge %}<span class="tabbar__badge">{{ badge }}</span>{% endif %}
           </a>
         {% endfor %}
         <button class="tabbar__item {% if path.startswith('/settings') or path.startswith('/exclusions') or path.startswith('/prompt') %}tabbar__item--active{% endif %}" type="button" data-nav-toggle aria-controls="sidebar" aria-expanded="false">

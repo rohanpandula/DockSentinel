@@ -18,9 +18,11 @@ from app.models import (
 )
 from app.repositories.analysis_events import AnalysisEventRepository
 from app.repositories.container_mutes import ContainerMuteRepository
+from app.repositories.incidents import IncidentRepository
 from app.repositories.local_issues import LocalIssueRepository
 from app.repositories.prompts import PromptRepository
 from app.repositories.settings import SettingsRepository
+from app.services.incident_actions import resolve_incident
 from app.services.llm_call import LLMCallService
 from app.services.telegram import TelegramNotifier
 from app.time_utils import utcnow_naive
@@ -28,6 +30,7 @@ from app.time_utils import utcnow_naive
 logger = logging.getLogger(__name__)
 
 MUTE_HOURS = 24
+INCIDENT_LIST_LIMIT = 10
 
 
 class TelegramBotService:
@@ -56,6 +59,7 @@ class TelegramBotService:
         prompt_repo: PromptRepository,
         llm_call_service: LLMCallService,
         mute_repo: Optional[ContainerMuteRepository] = None,
+        incident_repo: Optional[IncidentRepository] = None,
     ) -> None:
         self._app = app
         self.notifier = notifier
@@ -65,6 +69,9 @@ class TelegramBotService:
         self.prompt_repo = prompt_repo
         self.llm_call_service = llm_call_service
         self.mute_repo = mute_repo
+        # Track-g owns the incident engine; the bot only needs read + resolve, so
+        # it defaults to a plain repository when nothing was injected.
+        self.incident_repo = incident_repo or IncidentRepository()
         self._thread: Optional[threading.Thread] = None
         self._stop = threading.Event()
         self._offset = 0
@@ -171,6 +178,13 @@ class TelegramBotService:
             self.notifier.answer_callback_query(token, cq_id, "Invalid event id")
             return
 
+        # "resolve:<incident_id>" addresses an incident, not an event. The alert
+        # keyboard itself lives in alerts.py (track-g's file), so this handler is
+        # ready for the button whether or not that side has added it yet.
+        if action == "resolve":
+            self._handle_resolve_callback(event_id, cq_id, token, chat_id, message_id)
+            return
+
         event = self.event_repo.get(event_id) if hasattr(self.event_repo, "get") else db.session.get(AnalysisEvent, event_id)
         if event is None:
             self.notifier.answer_callback_query(token, cq_id, "Event not found")
@@ -261,13 +275,20 @@ class TelegramBotService:
             issue.telegram_message_id = reply_id
             db.session.commit()
 
-    # ── Text commands: /mutes, /unmute <name> ───────────────────
+    # ── Text commands: /incidents, /resolve <id>, /mutes, /unmute <name> ──
     def _handle_command(self, text: str, chat_id: str, token: str, message_id: Optional[int]) -> bool:
         """Returns True if `text` was a bot command and has been handled."""
         if not text.startswith("/"):
             return False
         parts = text.split()
         cmd = parts[0].split("@", 1)[0].lower()
+        if cmd == "/incidents":
+            self.notifier.send_message(token, chat_id, self._incidents_reply(), reply_to_message_id=message_id)
+            return True
+        if cmd == "/resolve":
+            raw_id = parts[1] if len(parts) > 1 else ""
+            self.notifier.send_message(token, chat_id, self._resolve_reply(raw_id), reply_to_message_id=message_id)
+            return True
         if cmd == "/mutes":
             if self.mute_repo is None:
                 reply = "Mutes unavailable."
@@ -295,6 +316,55 @@ class TelegramBotService:
             self.notifier.send_message(token, chat_id, reply, reply_to_message_id=message_id)
             return True
         return False
+
+    def _handle_resolve_callback(
+        self, incident_id: int, cq_id: str, token: str, chat_id: str, message_id: Optional[int]
+    ) -> None:
+        incident = self.incident_repo.get(incident_id)
+        if incident is None:
+            self.notifier.answer_callback_query(token, cq_id, "Incident not found")
+            return
+        if not resolve_incident(incident):
+            self.notifier.answer_callback_query(token, cq_id, "Already resolved")
+            return
+        self.notifier.edit_message_reply_markup(token, chat_id, message_id, reply_markup={"inline_keyboard": []})
+        self.notifier.answer_callback_query(token, cq_id, f"Incident #{incident.id} resolved")
+        self.notifier.send_message(
+            token, chat_id,
+            f"✅ RESOLVED · Incident #{incident.id} · {incident.container_name or '—'}",
+            reply_to_message_id=message_id,
+        )
+
+    # ── Incident helpers ────────────────────────────────────────
+    def _incidents_reply(self) -> str:
+        try:
+            incidents = self.incident_repo.list(status="open", limit=INCIDENT_LIST_LIMIT)
+        except Exception:  # pragma: no cover - table missing before track-g lands
+            return "Incidents unavailable."
+        if not incidents:
+            return "No open incidents"
+        lines = ["🔥 Open incidents:"]
+        for i in incidents:
+            lines.append(
+                f"#{i.id} · {i.container_name or '—'} · ×{i.occurrence_count} · "
+                f"{i.duration_label()} · {i.title or i.signature}"
+            )
+        return "\n".join(lines)
+
+    def _resolve_reply(self, raw_id: str) -> str:
+        try:
+            incident_id = int(str(raw_id).lstrip("#"))
+        except (TypeError, ValueError):
+            return "Usage: /resolve <incident_id>"
+        incident = self.incident_repo.get(incident_id)
+        if incident is None:
+            return f"Incident #{incident_id} not found."
+        if not resolve_incident(incident):
+            return f"Incident #{incident_id} is already resolved."
+        return (
+            f"✅ RESOLVED · Incident #{incident.id} · {incident.container_name or '—'} · "
+            f"×{incident.occurrence_count} over {incident.duration_label()}"
+        )
 
     # ── Helpers ─────────────────────────────────────────────────
     def _create_issue(

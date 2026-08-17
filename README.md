@@ -141,6 +141,34 @@ Tap behaviour:
 
 The bot uses long-polling (`getUpdates`) — **no webhook, no public URL, no tunnel required**. It works on a private LAN out of the box.
 
+## Incidents
+
+Coalescing merges chunks that arrive close together; **incidents** merge alerts that keep coming back. Repeated alerts sharing a signature (container + problem) are grouped into one `Incident` row instead of one Telegram message per occurrence: the first occurrence sends a message, every later occurrence edits that same message in place and bumps `occurrence_count`, and the incident auto-resolves once it has been quiet for a while. An incident is therefore "this thing is still broken", not "this happened once".
+
+Three settings control it (Settings → *Alerts & rate limits*, or `PUT /api/settings`):
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `incident_resolve_after_minutes` | `30` | Quiet window after the last occurrence before the incident auto-resolves. |
+| `incident_reminder_hours` | `0` | Re-ping the chat every N hours while an incident stays open. `0` disables reminders. |
+| `incident_notify_on_resolve` | `true` | Post a closing message when an incident resolves. |
+
+The **Incidents** page (`/incidents`, in the Monitor nav with the open count as a badge) is a master/detail view: open incidents first with occurrence count, duration, container and last-seen; the detail pane shows the timeline (first/last seen, `notify_count`) plus Resolve, Mute container 24 h, and links to the container drill-down and that container's events. Open incidents also appear at the top of the dashboard.
+
+API:
+
+```
+GET  /api/incidents                     # {"items": [...]} newest first; ?status=open|resolved&limit=1..500
+GET  /api/incidents/{id}                # incl. occurrence_count, duration_seconds, telegram_message_id
+POST /api/incidents/{id}/resolve        # 200 incident · 404 not found · 409 already resolved
+```
+
+Telegram commands (operator chat only):
+
+- `/incidents` — up to 10 open incidents as `#id · container · ×N · 42m · title`, or `No open incidents`.
+- `/resolve <id>` — marks an incident resolved and confirms in-thread.
+- `/mutes`, `/unmute <container>` — unchanged.
+
 ## Coalescing Noisy Containers
 
 Set `chunk_coalesce_window_seconds` (Settings → *Alerts & rate limits* or `PUT /api/settings`) to hold matched log chunks per container in a sliding window. Every new matching chunk resets the timer; when the window elapses without new arrivals, the batch ships as a single LLM call and produces **one** summarized alert instead of dozens. `0` disables; `300` (five minutes) is a good starting value for a noisy homelab.
@@ -194,6 +222,10 @@ GET    /api/issues/{id}
 PATCH  /api/issues/{id}
 POST   /api/issues/{id}/try-llm         # {"prompt": ..., "model"?, "base_url"?, "api_key"?, "transport"?, "cli_backend"?}
                                         # a base_url override never receives the stored api_key
+
+GET    /api/incidents                   # {"items":[...]}; ?status=open|resolved&limit=1..500
+GET    /api/incidents/{id}              # + occurrence_count, duration_seconds, telegram_message_id
+POST   /api/incidents/{id}/resolve      # 404 not found · 409 already resolved
 
 GET    /api/exclusions
 POST   /api/exclusions
