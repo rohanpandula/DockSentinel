@@ -212,6 +212,33 @@ class IncidentService:
             incident.telegram_chat_id = config.telegram_chat_id
         return sent, error, message_id
 
+    def _find_open(
+        self, container_name: str | None, classification: str | None, summary: str | None
+    ) -> Incident | None:
+        """The open incident this occurrence belongs to.
+
+        Severity is part of the signature (two identical-looking lines at
+        different severities really are different problems to a reader), but a
+        problem that gets *worse* is still the same problem — so when the exact
+        signature misses we probe the other severities, highest first. Without
+        this an escalation would silently open a second incident instead of
+        upgrading the one already in the chat.
+        """
+        exact = incident_signature(container_name, classification, summary)
+        incident = self.repo.find_open_by_signature(exact)
+        if incident is not None:
+            return incident
+        others = sorted(CLASSIFICATION_RANK, key=lambda c: -CLASSIFICATION_RANK[c])
+        for other in others:
+            if other == (classification or "").strip().lower():
+                continue
+            found = self.repo.find_open_by_signature(
+                incident_signature(container_name, other, summary)
+            )
+            if found is not None:
+                return found
+        return None
+
     # -- entry points ------------------------------------------------------
 
     def notify(
@@ -257,7 +284,7 @@ class IncidentService:
 
         now = now or utcnow_naive()
         signature = incident_signature(container_name, classification, summary)
-        incident = self.repo.find_open_by_signature(signature)
+        incident = self._find_open(container_name, classification, summary)
 
         # 1. Brand-new problem → one fresh message.
         if incident is None:
@@ -281,6 +308,8 @@ class IncidentService:
         # 2. The problem got worse → a NEW message, because this must ping.
         if classification_rank(classification) > classification_rank(incident.classification):
             incident.classification = (classification or incident.classification)
+            # Re-key to the new severity so later occurrences hit the exact lookup.
+            incident.signature = signature
             incident.title = _first_line(message)[:500] or incident.title
             return self._send_new(strategy, config, incident, message, reply_markup, now)
 
