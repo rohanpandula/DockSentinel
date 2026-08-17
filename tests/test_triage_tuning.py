@@ -362,3 +362,108 @@ def test_migration_0010_ids():
     assert 'batch_alter_table("settings")' in text
     for col in ("analysis_cooldown_minutes", "persistent_warning_count", "persistent_warning_window_minutes", "alert_min_confidence"):
         assert col in text
+
+
+def _warning_event(container_name, created_at, alert_sent=False, status="analyzed"):
+    from app.models import AnalysisEvent
+
+    return AnalysisEvent(
+        container_id="c1",
+        container_name=container_name,
+        status=status,
+        classification="warning",
+        summary="still failing",
+        confidence=0.7,
+        alert_sent=alert_sent,
+        created_at=created_at,
+    )
+
+
+def test_escalation_is_edge_triggered_not_repeating(app, container):
+    """A container that stays broken must produce ONE escalation, not one per cooldown.
+
+    Regression: escalation only checked alert_cooldown_minutes, so a
+    permanently-true condition re-alerted every cooldown interval forever
+    (observed live: 5 identical alerts for one container in 47 minutes).
+    """
+    from datetime import timedelta
+
+    from app.extensions import db
+    from app.models import Settings
+    from app.time_utils import utcnow_naive
+
+    sent = []
+
+    class _Strategy:
+        def send(self, message, config, reply_markup=None):
+            sent.append(message)
+            return True, None, 1
+
+    with app.app_context():
+        s = Settings.singleton()
+        s.persistent_warning_count = 3
+        s.persistent_warning_window_minutes = 60
+        s.alert_cooldown_minutes = 10
+        db.session.commit()
+
+        svc = container.sentinel
+        svc.alert_service.strategy = _Strategy()
+        now = utcnow_naive()
+
+        # An escalation alert 30 minutes ago: the 10-minute cooldown has long
+        # lapsed, but warnings never stopped, so this is still one incident.
+        db.session.add(_warning_event("ddns", now - timedelta(minutes=30), alert_sent=True))
+        for minutes_ago in (25, 20, 15, 5):
+            db.session.add(_warning_event("ddns", now - timedelta(minutes=minutes_ago)))
+        db.session.commit()
+
+        ev = _warning_event("ddns", now)
+        db.session.add(ev)
+        db.session.flush()
+        svc._maybe_escalate_warning(ev, s)
+        db.session.commit()
+
+        assert ev.alert_sent is not True
+        assert ev.alert_error == "persistent warning: same episode as the last alert"
+        assert sent == []
+
+
+def test_escalation_rearms_after_a_quiet_window(app, container):
+    """Once the container goes quiet for a full window, a new episode may alert again."""
+    from datetime import timedelta
+
+    from app.extensions import db
+    from app.models import Settings
+    from app.time_utils import utcnow_naive
+
+    sent = []
+
+    class _Strategy:
+        def send(self, message, config, reply_markup=None):
+            sent.append(message)
+            return True, None, 1
+
+    with app.app_context():
+        s = Settings.singleton()
+        s.persistent_warning_count = 3
+        s.persistent_warning_window_minutes = 60
+        s.alert_cooldown_minutes = 10
+        db.session.commit()
+
+        svc = container.sentinel
+        svc.alert_service.strategy = _Strategy()
+        now = utcnow_naive()
+
+        # An alert two hours ago, then nothing until now: the episode ended.
+        db.session.add(_warning_event("ddns", now - timedelta(minutes=120), alert_sent=True))
+        for minutes_ago in (20, 15, 10):
+            db.session.add(_warning_event("ddns", now - timedelta(minutes=minutes_ago)))
+        db.session.commit()
+
+        ev = _warning_event("ddns", now)
+        db.session.add(ev)
+        db.session.flush()
+        svc._maybe_escalate_warning(ev, s)
+        db.session.commit()
+        assert ev.alert_sent is True
+        assert len(sent) == 1

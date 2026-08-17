@@ -577,18 +577,34 @@ class SentinelService:
         count = self.event_repo.count_warnings(event.container_name, now - timedelta(minutes=window_minutes))
         if count < threshold:
             return
-        cooldown_minutes = int(settings.alert_cooldown_minutes or 0)
-        if cooldown_minutes > 0:
-            since = now - timedelta(minutes=cooldown_minutes)
-            if self.event_repo.find_recent_alert_for_name(event.container_name, since) is not None:
-                event.alert_error = "persistent warning alert suppressed by cooldown"
-                return
         alert_config = AlertConfig.from_settings(settings)
         suppressed = self._confidence_suppression(event.confidence, alert_config)
         if suppressed is not None:
             event.alert_sent = False
             event.alert_error = suppressed
             return
+
+        cooldown_minutes = int(settings.alert_cooldown_minutes or 0)
+        if cooldown_minutes > 0:
+            since = now - timedelta(minutes=cooldown_minutes)
+            if self.event_repo.find_recent_alert_for_name(event.container_name, since) is not None:
+                event.alert_error = "persistent warning alert suppressed by cooldown"
+                return
+
+        # Edge trigger, not level trigger. A container that stays broken keeps
+        # satisfying "N warnings in the window" forever; alerting every time that
+        # is true turns escalation into an alarm that repeats at the cooldown
+        # interval. Re-arm only once the container has been quiet (no warnings)
+        # for a full window after the previous alert — i.e. one alert per episode.
+        last_alert = self.event_repo.find_last_alert_for_name(event.container_name)
+        if last_alert is not None:
+            next_warning = self.event_repo.first_warning_after(
+                event.container_name, last_alert.created_at, exclude_id=event.id
+            )
+            quiet_until = next_warning.created_at if next_warning is not None else now
+            if quiet_until - last_alert.created_at < timedelta(minutes=window_minutes):
+                event.alert_error = "persistent warning: same episode as the last alert"
+                return
         sent, error, _ = self.alert_service.maybe_send_escalation(event, alert_config, count, window_minutes)
         event.alert_sent = sent
         event.alert_error = error

@@ -150,6 +150,40 @@ class AnalysisEventRepository:
             .first()
         )
 
+    def find_last_alert_for_name(self, container_name: str) -> AnalysisEvent | None:
+        """Most recent *sent* alert for this container NAME, with no time bound."""
+        return (
+            AnalysisEvent.query.filter(
+                and_(
+                    AnalysisEvent.container_name == container_name,
+                    AnalysisEvent.alert_sent.is_(True),
+                )
+            )
+            .order_by(AnalysisEvent.created_at.desc())
+            .first()
+        )
+
+    def first_warning_after(
+        self, container_name: str, after: datetime, exclude_id: int | None = None
+    ) -> AnalysisEvent | None:
+        """Earliest warning verdict for this container NAME recorded after ``after``.
+
+        Used to measure the quiet gap following an alert: if the next warning
+        arrives before a full window has passed, the container never recovered
+        and we are still inside the same incident.
+        """
+        query = AnalysisEvent.query.filter(
+            and_(
+                AnalysisEvent.container_name == container_name,
+                AnalysisEvent.status.in_(["analyzed", "analysis_cooldown"]),
+                AnalysisEvent.classification == "warning",
+                AnalysisEvent.created_at > after,
+            )
+        )
+        if exclude_id is not None:
+            query = query.filter(AnalysisEvent.id != exclude_id)
+        return query.order_by(AnalysisEvent.created_at.asc()).first()
+
     def get_for_window(self, since: datetime) -> list[AnalysisEvent]:
         return (
             AnalysisEvent.query.filter(AnalysisEvent.created_at >= since)
