@@ -1,3 +1,12 @@
+## Contributor attribution
+
+Credit human contributors only. Do not add Claude, Codex, or other AI tools as
+authors, contributors, or `Co-Authored-By` trailers in future commits, pull
+requests, or documentation. Use the configured human Git identity. Preserve
+historical commits; do not rewrite history to remove past attribution.
+References to supported LLM providers and CLI backends are product documentation,
+not contributor credits, and should remain accurate.
+
 <!-- GSD:project-start source:PROJECT.md -->
 ## Project
 

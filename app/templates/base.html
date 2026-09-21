@@ -21,7 +21,7 @@
   <body>
     {% set path = request.path %}
     {% set nav_items = [
-      ('dashboard', 'Now', path in ('/', '/dashboard'), 'ico-pulse', 0),
+      ('dashboard', 'Overview', path in ('/', '/dashboard'), 'ico-pulse', 0),
       ('incidents_page', 'Incidents', path.startswith('/incidents'), 'ico-alert', open_incident_count|default(0)),
       ('insights_page', 'Events', path.startswith('/insights') or path.startswith('/containers'), 'ico-list', 0),
       ('issues_page', 'Issues', path.startswith('/issues'), 'ico-issue', 0),
@@ -78,13 +78,13 @@
     </svg>
 
     <div class="shell" id="shell">
-      <a class="sr-only" href="#main">Skip to content</a>
+      <a class="skip-link" href="#main">Skip to content</a>
 
       <header class="topbar">
         <button class="btn btn--ghost btn--icon" type="button" data-nav-toggle aria-controls="sidebar" aria-expanded="false" aria-label="Open navigation">
           <svg><use href="#ico-menu"/></svg>
         </button>
-        <span class="topbar__title">{{ current_label }}</span>
+        <a class="topbar__title" href="{{ url_for('dashboard') }}">DockSentinel</a>
         <a class="status-pill status-pill--{{ shell_kind }}" href="{{ url_for('dashboard') }}" aria-label="Sentinel {{ shell_kind }}">
           <span class="pulse {% if shell_kind == 'running' %}pulse--live{% endif %}" aria-hidden="true"></span>
           <span class="status-pill__label">{{ shell_kind }}</span>
@@ -93,22 +93,16 @@
 
       <div class="scrim" data-nav-close></div>
 
-      <aside class="sidebar" id="sidebar" aria-label="Sidebar">
-        <div class="row row--between">
-          <a class="brand flex-1" href="{{ url_for('dashboard') }}">
+      <aside class="sidebar" id="sidebar" aria-label="Application navigation">
+        <div class="sidebar__brand">
+          <a class="brand" href="{{ url_for('dashboard') }}">
             <span class="brand__mark" aria-hidden="true"><svg><use href="#ico-shield"/></svg></span>
-            <span>DockSentinel<span class="brand__sub">Homelab AIOps</span></span>
+            <span>DockSentinel</span>
           </a>
           <button class="btn btn--ghost btn--icon" type="button" data-nav-close aria-label="Close navigation" hidden>
             <svg><use href="#ico-x"/></svg>
           </button>
         </div>
-
-        <a class="status-pill status-pill--{{ shell_kind }} status-pill--wide" href="{{ url_for('dashboard') }}">
-          <span class="pulse {% if shell_kind == 'running' %}pulse--live{% endif %}" aria-hidden="true"></span>
-          <span class="status-pill__label">Sentinel {{ shell_kind }}</span>
-          <svg aria-hidden="true"><use href="#ico-chevron"/></svg>
-        </a>
 
         <nav class="nav" aria-label="Primary">
           <span class="nav__group">Monitor</span>
@@ -126,16 +120,18 @@
           {% endfor %}
         </nav>
 
-        <div class="nav__spacer"></div>
+        <a class="status-pill status-pill--{{ shell_kind }} status-pill--wide" href="{{ url_for('dashboard') }}">
+          <span class="pulse {% if shell_kind == 'running' %}pulse--live{% endif %}" aria-hidden="true"></span>
+          <span class="status-pill__label">{{ shell_kind }}</span>
+        </a>
 
         <div class="sidebar__foot">
-          <button class="theme-toggle" type="button" data-theme-toggle title="Cycle theme: auto → light → dark">
+          <button class="theme-toggle" type="button" data-theme-toggle aria-label="Cycle color theme" title="Cycle theme: auto → light → dark">
             <svg class="ico-auto" aria-hidden="true"><use href="#ico-auto"/></svg>
             <svg class="ico-sun" aria-hidden="true"><use href="#ico-sun"/></svg>
             <svg class="ico-moon" aria-hidden="true"><use href="#ico-moon"/></svg>
             <span class="theme-toggle__label"></span>
           </button>
-          <span class="sidebar__meta">Docker logs → LLM triage → Telegram</span>
         </div>
       </aside>
 

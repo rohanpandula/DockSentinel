@@ -627,7 +627,14 @@ function wireNavDrawer() {
     el.addEventListener("click", () => setOpen(false));
   });
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && shell.classList.contains("nav-open")) setOpen(false);
+    if (!shell.classList.contains("nav-open")) return;
+    if (e.key === "Escape") setOpen(false);
+    if (e.key === "Tab") {
+      const items = [...shell.querySelectorAll('.sidebar a[href], .sidebar button')].filter(el => el.getClientRects().length);
+      const first = items[0], last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }
+      if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
+    }
   });
   const mq = window.matchMedia("(min-width: 901px)");
   mq.addEventListener("change", () => { if (mq.matches) setOpen(false); });
