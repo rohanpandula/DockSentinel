@@ -67,6 +67,13 @@ Then run `docker compose up -d`. Both variables must reach the **container envir
 
 Captured **September 21, 2026** from the current application using **synthetic demonstration data**, not private production logs or credentials. The overview above and the gallery below show the actual server-rendered interface.
 
+<details>
+<summary>Selected container: evidence and pipeline</summary>
+
+![Selected container evidence and pipeline counts](docs/screenshots/console-detail.png)
+
+</details>
+
 | Monitor | Investigate |
 | --- | --- |
 | **Incidents** — recurring problems, counts, timeline, and resolution | **Events** — verdicts, pipeline outcomes, and log context |
