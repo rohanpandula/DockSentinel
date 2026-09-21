@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+from urllib.parse import urlsplit
 
 import httpx
 from flask import Blueprint, current_app, jsonify, request
@@ -10,6 +11,11 @@ from app.extensions import db
 from app.models import LocalIssueStatus
 
 bp = Blueprint("issues_api", __name__, url_prefix="/api")
+
+
+def _is_http_url(url: str) -> bool:
+    parsed = urlsplit(url)
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
 
 def _ollama_root(base_url: str) -> str:
@@ -28,13 +34,20 @@ def list_ollama_models():
     root = _ollama_root(base_url)
     if not root:
         return jsonify({"ok": False, "error": "base_url not configured"}), 400
+    if not _is_http_url(root):
+        return jsonify({"ok": False, "error": "base_url must be an http(s) URL"}), 400
 
     models: list[dict] = []
     loaded_names: set[str] = set()
     try:
         with httpx.Client(timeout=5) as client:
-            tags = client.get(f"{root}/api/tags").json()
-            ps = client.get(f"{root}/api/ps").json()
+            tags_resp = client.get(f"{root}/api/tags")
+            tags_resp.raise_for_status()
+            tags = tags_resp.json()
+            ps_resp = client.get(f"{root}/api/ps")
+            ps = ps_resp.json() if ps_resp.status_code == 200 else {}
+        if not isinstance(tags, dict) or "models" not in tags:
+            raise ValueError("not an Ollama /api/tags response")
         for m in (ps.get("models") or []):
             name = m.get("name")
             if name:
@@ -49,10 +62,10 @@ def list_ollama_models():
                 "modified_at": m.get("modified_at"),
                 "loaded": name in loaded_names,
             })
-    except httpx.HTTPError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 502
-    except Exception as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 502
+    except Exception:
+        # Deliberately generic: this endpoint fetches operator-supplied URLs and
+        # must not act as a host/port probing oracle via detailed error text.
+        return jsonify({"ok": False, "error": "could not reach an Ollama server at that base_url"}), 502
 
     models.sort(key=lambda m: (not m["loaded"], m["name"].lower()))
     return jsonify({
@@ -105,6 +118,13 @@ def try_llm_on_issue(issue_id: int):
         val = body.get(field)
         if val is not None and str(val).strip() != "":
             overrides[field] = str(val).strip()
+    if "base_url" in overrides:
+        if not _is_http_url(str(overrides["base_url"])):
+            return jsonify({"error": "base_url must be an http(s) URL"}), 400
+        # Never send the STORED api key to a caller-chosen host: an override
+        # base_url only ever gets the api_key supplied in the same request.
+        if overrides["base_url"].rstrip("/") != (base.base_url or "").rstrip("/"):
+            overrides.setdefault("api_key", "")
     overrides.setdefault("max_retries", 0)
     overrides.setdefault("cli_max_retries", 0)
     config = dataclasses.replace(base, **overrides)

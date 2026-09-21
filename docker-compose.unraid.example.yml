@@ -44,6 +44,10 @@ services:
     volumes:
       - docksentinel_data:/data
       - /var/run/docker.sock:/var/run/docker.sock:ro
+    # Makes the default LLM URL (http://host.docker.internal:11434/v1 → Ollama on
+    # the host) resolve on Linux/Unraid; Docker Desktop already provides it.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       br0:
         ipv4_address: 10.0.0.X # <-- replace with a free IP on your LAN

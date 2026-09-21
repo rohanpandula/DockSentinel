@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from datetime import timedelta
 from typing import Any, Optional
 
 from flask import Flask
@@ -16,13 +17,20 @@ from app.models import (
     PromptKey,
 )
 from app.repositories.analysis_events import AnalysisEventRepository
+from app.repositories.container_mutes import ContainerMuteRepository
+from app.repositories.incidents import IncidentRepository
 from app.repositories.local_issues import LocalIssueRepository
 from app.repositories.prompts import PromptRepository
 from app.repositories.settings import SettingsRepository
+from app.services.incident_actions import resolve_incident
 from app.services.llm_call import LLMCallService
 from app.services.telegram import TelegramNotifier
+from app.time_utils import utcnow_naive
 
 logger = logging.getLogger(__name__)
+
+MUTE_HOURS = 24
+INCIDENT_LIST_LIMIT = 10
 
 
 class TelegramBotService:
@@ -50,6 +58,8 @@ class TelegramBotService:
         issue_repo: LocalIssueRepository,
         prompt_repo: PromptRepository,
         llm_call_service: LLMCallService,
+        mute_repo: Optional[ContainerMuteRepository] = None,
+        incident_repo: Optional[IncidentRepository] = None,
     ) -> None:
         self._app = app
         self.notifier = notifier
@@ -58,9 +68,17 @@ class TelegramBotService:
         self.issue_repo = issue_repo
         self.prompt_repo = prompt_repo
         self.llm_call_service = llm_call_service
+        self.mute_repo = mute_repo
+        # Track-g owns the incident engine; the bot only needs read + resolve, so
+        # it defaults to a plain repository when nothing was injected.
+        self.incident_repo = incident_repo or IncidentRepository()
         self._thread: Optional[threading.Thread] = None
         self._stop = threading.Event()
         self._offset = 0
+        # Most recent chat that messaged the bot (authorised or not). The setup
+        # wizard reads this so the operator can discover their chat id by simply
+        # sending /start to the bot — no second getUpdates consumer needed.
+        self.last_seen_chat: Optional[dict[str, Any]] = None
 
     def start(self) -> None:
         if self._thread is not None and self._thread.is_alive():
@@ -92,15 +110,51 @@ class TelegramBotService:
                             self._dispatch(update, token)
                     except Exception:
                         logger.exception("telegram bot update dispatch failed")
-            except Exception:
-                logger.exception("telegram bot polling error")
+            except Exception as exc:
+                # One line, no traceback: this fires every 5s while e.g. a 409
+                # conflict persists, and the message already says what's wrong.
+                logger.warning("telegram bot polling error: %s", exc)
                 self._stop.wait(5)
 
     def _token(self) -> str:
         settings = self.settings_repo.get()
         return (settings.telegram_token or "").strip()
 
+    def _allowed_chat_id(self) -> str:
+        settings = self.settings_repo.get()
+        return str(settings.telegram_chat_id or "").strip()
+
+    @staticmethod
+    def _update_chat_id(update: dict[str, Any]) -> str:
+        if "callback_query" in update:
+            msg = (update["callback_query"] or {}).get("message") or {}
+        else:
+            msg = update.get("message") or {}
+        return str((msg.get("chat") or {}).get("id", "")).strip()
+
+    def _remember_chat(self, update: dict[str, Any], chat_id: str) -> None:
+        if not chat_id:
+            return
+        msg = update.get("message") or ((update.get("callback_query") or {}).get("message") or {})
+        chat = msg.get("chat") or {}
+        sender = (update.get("message") or {}).get("from") or {}
+        self.last_seen_chat = {
+            "chat_id": chat_id,
+            "type": chat.get("type"),
+            "title": chat.get("title") or chat.get("username") or sender.get("username") or sender.get("first_name"),
+            "seen_at": utcnow_naive().isoformat(),
+        }
+
     def _dispatch(self, update: dict[str, Any], token: str) -> None:
+        # Only the configured operator chat may drive the bot. Anyone can find
+        # a bot by username and DM it; without this check a stranger could
+        # attach to an issue thread and receive log excerpts + LLM answers.
+        allowed = self._allowed_chat_id()
+        chat_id = self._update_chat_id(update)
+        self._remember_chat(update, chat_id)
+        if not allowed or chat_id != allowed:
+            logger.warning("telegram update from unauthorised chat %r ignored", chat_id)
+            return
         if "callback_query" in update:
             self._handle_callback(update["callback_query"], token)
         elif "message" in update:
@@ -122,6 +176,13 @@ class TelegramBotService:
             event_id = int(raw_event_id)
         except ValueError:
             self.notifier.answer_callback_query(token, cq_id, "Invalid event id")
+            return
+
+        # "resolve:<incident_id>" addresses an incident, not an event. The alert
+        # keyboard itself lives in alerts.py (track-g's file), so this handler is
+        # ready for the button whether or not that side has added it yet.
+        if action == "resolve":
+            self._handle_resolve_callback(event_id, cq_id, token, chat_id, message_id)
             return
 
         event = self.event_repo.get(event_id) if hasattr(self.event_repo, "get") else db.session.get(AnalysisEvent, event_id)
@@ -162,6 +223,21 @@ class TelegramBotService:
                 issue.telegram_message_id = reply_id
                 db.session.commit()
             self.notifier.answer_callback_query(token, cq_id, "Ask a follow-up")
+        elif action == "mute":
+            name = event.container_name or ""
+            if self.mute_repo is None or not name:
+                self.notifier.answer_callback_query(token, cq_id, "Mute unavailable")
+                return
+            until = utcnow_naive() + timedelta(hours=MUTE_HOURS)
+            mute = self.mute_repo.upsert(name, until, "telegram")
+            db.session.commit()
+            self.notifier.edit_message_reply_markup(token, chat_id, message_id, reply_markup={"inline_keyboard": []})
+            self.notifier.answer_callback_query(token, cq_id, f"Muted {name} for {MUTE_HOURS}h")
+            self.notifier.send_message(
+                token, chat_id,
+                f"🔕 MUTED · {name} · until {mute.until_label()}",
+                reply_to_message_id=message_id,
+            )
         else:
             self.notifier.answer_callback_query(token, cq_id, "Unknown action")
 
@@ -171,12 +247,14 @@ class TelegramBotService:
         if not text:
             return
         chat_id = str(msg.get("chat", {}).get("id", ""))
+        if self._handle_command(text, chat_id, token, msg.get("message_id")):
+            return
         reply_to = msg.get("reply_to_message") or {}
         reply_to_id = reply_to.get("message_id")
 
         issue: Optional[LocalIssue] = None
         if reply_to_id:
-            issue = self.issue_repo.get_by_telegram_message(int(reply_to_id))
+            issue = self.issue_repo.get_by_telegram_message(int(reply_to_id), chat_id=chat_id)
         if issue is None:
             issue = self.issue_repo.get_latest_discussing_for_chat(chat_id)
         if issue is None or issue.status != LocalIssueStatus.DISCUSSING.value:
@@ -196,6 +274,97 @@ class TelegramBotService:
         if ok and reply_id is not None:
             issue.telegram_message_id = reply_id
             db.session.commit()
+
+    # ── Text commands: /incidents, /resolve <id>, /mutes, /unmute <name> ──
+    def _handle_command(self, text: str, chat_id: str, token: str, message_id: Optional[int]) -> bool:
+        """Returns True if `text` was a bot command and has been handled."""
+        if not text.startswith("/"):
+            return False
+        parts = text.split()
+        cmd = parts[0].split("@", 1)[0].lower()
+        if cmd == "/incidents":
+            self.notifier.send_message(token, chat_id, self._incidents_reply(), reply_to_message_id=message_id)
+            return True
+        if cmd == "/resolve":
+            raw_id = parts[1] if len(parts) > 1 else ""
+            self.notifier.send_message(token, chat_id, self._resolve_reply(raw_id), reply_to_message_id=message_id)
+            return True
+        if cmd == "/mutes":
+            if self.mute_repo is None:
+                reply = "Mutes unavailable."
+            else:
+                mutes = self.mute_repo.list_active(utcnow_naive())
+                if not mutes:
+                    reply = "🔔 No containers are muted."
+                else:
+                    reply = "🔕 Muted containers:\n" + "\n".join(
+                        f"• {m.container_name} · until {m.until_label()}" for m in mutes
+                    )
+            self.notifier.send_message(token, chat_id, reply, reply_to_message_id=message_id)
+            return True
+        if cmd == "/unmute":
+            name = " ".join(parts[1:]).strip()
+            if not name:
+                reply = "Usage: /unmute <container_name>"
+            elif self.mute_repo is None:
+                reply = "Mutes unavailable."
+            elif self.mute_repo.delete(name):
+                db.session.commit()
+                reply = f"🔔 UNMUTED · {name}"
+            else:
+                reply = f"{name} is not muted."
+            self.notifier.send_message(token, chat_id, reply, reply_to_message_id=message_id)
+            return True
+        return False
+
+    def _handle_resolve_callback(
+        self, incident_id: int, cq_id: str, token: str, chat_id: str, message_id: Optional[int]
+    ) -> None:
+        incident = self.incident_repo.get(incident_id)
+        if incident is None:
+            self.notifier.answer_callback_query(token, cq_id, "Incident not found")
+            return
+        if not resolve_incident(incident):
+            self.notifier.answer_callback_query(token, cq_id, "Already resolved")
+            return
+        self.notifier.edit_message_reply_markup(token, chat_id, message_id, reply_markup={"inline_keyboard": []})
+        self.notifier.answer_callback_query(token, cq_id, f"Incident #{incident.id} resolved")
+        self.notifier.send_message(
+            token, chat_id,
+            f"✅ RESOLVED · Incident #{incident.id} · {incident.container_name or '—'}",
+            reply_to_message_id=message_id,
+        )
+
+    # ── Incident helpers ────────────────────────────────────────
+    def _incidents_reply(self) -> str:
+        try:
+            incidents = self.incident_repo.list(status="open", limit=INCIDENT_LIST_LIMIT)
+        except Exception:  # pragma: no cover - table missing before track-g lands
+            return "Incidents unavailable."
+        if not incidents:
+            return "No open incidents"
+        lines = ["🔥 Open incidents:"]
+        for i in incidents:
+            lines.append(
+                f"#{i.id} · {i.container_name or '—'} · ×{i.occurrence_count} · "
+                f"{i.duration_label()} · {i.title or i.signature}"
+            )
+        return "\n".join(lines)
+
+    def _resolve_reply(self, raw_id: str) -> str:
+        try:
+            incident_id = int(str(raw_id).lstrip("#"))
+        except (TypeError, ValueError):
+            return "Usage: /resolve <incident_id>"
+        incident = self.incident_repo.get(incident_id)
+        if incident is None:
+            return f"Incident #{incident_id} not found."
+        if not resolve_incident(incident):
+            return f"Incident #{incident_id} is already resolved."
+        return (
+            f"✅ RESOLVED · Incident #{incident.id} · {incident.container_name or '—'} · "
+            f"×{incident.occurrence_count} over {incident.duration_label()}"
+        )
 
     # ── Helpers ─────────────────────────────────────────────────
     def _create_issue(
@@ -240,16 +409,17 @@ class TelegramBotService:
 
     def _ask_llm(self, issue: LocalIssue, user_message: str) -> str:
         settings = self.settings_repo.get()
-        try:
-            system_prompt = self.prompt_repo.get(PromptKey.SENTINEL_SYSTEM).content
-        except Exception:
-            system_prompt = "You are an SRE assistant helping triage Docker container issues."
+        template = self.prompt_repo.get_by_key(PromptKey.SENTINEL_SYSTEM)
+        system_prompt = (
+            template.content if template is not None and template.content
+            else "You are an SRE assistant helping triage Docker container issues."
+        )
 
         messages = [
-            {"role": "system", "content": system_prompt},
             {
                 "role": "system",
                 "content": (
+                    f"{system_prompt}\n\n"
                     "You are continuing a live discussion with an operator about a specific "
                     "container alert. Stay focused, give concrete actions, answer only what "
                     "is asked. Keep replies under 1200 characters."

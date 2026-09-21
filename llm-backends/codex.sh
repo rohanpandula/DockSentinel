@@ -10,6 +10,8 @@ prompt="$(cat)"
 out_file="$(mktemp)"
 trap 'rm -f "$out_file"' EXIT
 
+# --sandbox read-only: the prompt contains untrusted container logs, so codex
+# must not be able to write files or run network commands on the host.
 codex exec \
   --skip-git-repo-check \
   --ephemeral \

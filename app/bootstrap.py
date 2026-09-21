@@ -32,5 +32,13 @@ def seed_defaults() -> None:
                     is_default=True,
                 )
             )
+        elif existing.default_content != content:
+            # Ship updated defaults to existing DBs: always refresh the stored
+            # default (so "Reset" gives the new text) and, if the operator never
+            # customised the prompt, the live content too.
+            existing.default_content = content
+            if existing.is_default:
+                existing.content = content
+                existing.version = (existing.version or 1) + 1
 
     db.session.commit()

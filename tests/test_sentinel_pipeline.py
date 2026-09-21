@@ -214,3 +214,18 @@ def test_sentinel_per_container_rate_limit(tmp_path, monkeypatch):
             chunk_text="fatal error: a different error entirely",
         )
         assert second.status == "rate_limited"
+
+
+def test_coalescer_flushes_by_max_age_even_under_constant_arrivals(app):
+    """A container logging a matching line more often than the window must still be analysed."""
+    import time
+    from app.services.chunk_coalescer import ChunkCoalescer
+
+    flushed = []
+    c = ChunkCoalescer(app, lambda cid, name, chunks: flushed.append((cid, list(chunks))))
+    for i in range(6):
+        c.enqueue(container_id="c", container_name="c", chunk_text=f"error {i}", window_seconds=1)
+        time.sleep(0.25)  # arrivals every 250ms < 1s window: old debounce never fired
+    time.sleep(0.6)
+    assert flushed and flushed[0][0] == "c"
+    assert len(flushed[0][1]) >= 4  # first batch carries the chunks that arrived during the window

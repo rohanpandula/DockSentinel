@@ -33,6 +33,8 @@ def analyze_now(body: AnalyzeBody):
     sentinel = current_app.extensions["services"].sentinel
     try:
         event = sentinel.analyze_container_now(body.container.strip())
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
     except Exception as exc:  # pragma: no cover - requires docker runtime
         return jsonify({"error": str(exc)}), 500
 

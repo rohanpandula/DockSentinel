@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -9,12 +10,66 @@ import httpx
 from app.services.cli_backends import CLIBackendRunner
 
 
+# Hosts / models known to accept OpenAI-style ``response_format: {"type": "json_object"}``
+# on /chat/completions. Ollama's OpenAI-compatible endpoint supports it too. When the
+# base_url or model matches and the conversation asks for JSON, we send it once and
+# fall back to a plain request if the server rejects the parameter with HTTP 400.
+JSON_MODE_HOST_ALLOWLIST: tuple[str, ...] = (
+    "api.openai.com",
+    "openai.azure.com",
+    "openrouter.ai",
+    "api.groq.com",
+    "api.together.xyz",
+    "api.deepseek.com",
+    "api.mistral.ai",
+    "api.fireworks.ai",
+    ":11434",  # ollama
+    "localhost",
+    "127.0.0.1",
+    "host.docker.internal",
+)
+JSON_MODE_MODEL_PREFIXES: tuple[str, ...] = ("gpt-", "o1", "o3", "o4", "llama", "qwen", "mistral", "deepseek", "gemma", "phi")
+
+_JSON_HINT = re.compile(r"\bJSON\b", re.IGNORECASE)
+
+
+def json_mode_supported(base_url: str, model: str) -> bool:
+    url = (base_url or "").lower()
+    name = (model or "").lower()
+    if any(host in url for host in JSON_MODE_HOST_ALLOWLIST):
+        return True
+    return any(name.startswith(prefix) for prefix in JSON_MODE_MODEL_PREFIXES)
+
+
+def wants_json(messages: list[dict[str, str]]) -> bool:
+    """True when the prompt explicitly asks for a JSON reply (sentinel triage does; briefings don't)."""
+    return any(_JSON_HINT.search(m.get("content", "") or "") for m in messages)
+
+
+def _mentions_response_format(response: Any) -> bool:
+    try:
+        return "response_format" in (response.text or "")
+    except Exception:
+        return False
+
+
 @dataclass(slots=True)
 class LLMResult:
     content: str
     model: str
     latency_ms: int
     usage: dict[str, Any]
+
+
+def _error_detail(response: 'httpx.Response') -> str:
+    try:
+        body = response.json()
+        err = body.get("error", body) if isinstance(body, dict) else body
+        if isinstance(err, dict):
+            return str(err.get("message") or err)[:300]
+        return str(err)[:300]
+    except Exception:
+        return (response.text or "")[:300]
 
 
 class LLMClient:
@@ -34,6 +89,7 @@ class LLMClient:
         max_retries: int,
         max_tokens: int,
         temperature: float = 0.1,
+        extra_body: dict[str, Any] | None = None,
     ) -> LLMResult:
         if transport == "cli":
             return self.chat_completion_cli(
@@ -47,6 +103,7 @@ class LLMClient:
             )
 
         return self.chat_completion(
+            extra_body=extra_body,
             base_url=base_url,
             api_key=api_key,
             model=model,
@@ -68,18 +125,26 @@ class LLMClient:
         max_retries: int,
         max_tokens: int,
         temperature: float = 0.1,
+        extra_body: dict[str, Any] | None = None,
     ) -> LLMResult:
         endpoint = f"{base_url.rstrip('/')}/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
-        payload = {
+        headers = {"Content-Type": "application/json"}
+        if (api_key or "").strip():
+            headers["Authorization"] = f"Bearer {api_key.strip()}"
+        # (no Authorization header at all for keyless local servers — an empty
+        #  "Bearer " value is an illegal header and httpx refuses to send it)
+        payload: dict[str, Any] = {
             "model": model,
             "messages": messages,
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
+        use_json_mode = json_mode_supported(base_url, model) and wants_json(messages)
+        if use_json_mode:
+            payload["response_format"] = {"type": "json_object"}
+        if extra_body:
+            # Operator-supplied extras win (e.g. enable_thinking=false for Qwen servers).
+            payload.update(extra_body)
 
         backoff_seconds = 0.5
         last_error: str | None = None
@@ -89,6 +154,16 @@ class LLMClient:
             try:
                 with httpx.Client(timeout=timeout_seconds) as client:
                     response = client.post(endpoint, headers=headers, json=payload)
+                    if (
+                        use_json_mode
+                        and response.status_code == 400
+                        and _mentions_response_format(response)
+                    ):
+                        # Server doesn't support json mode: retry once without it
+                        # (and don't send it again on later retries).
+                        payload.pop("response_format", None)
+                        use_json_mode = False
+                        response = client.post(endpoint, headers=headers, json=payload)
                 latency_ms = int((time.monotonic() - start) * 1000)
 
                 if response.status_code >= 500 or response.status_code == 429:
@@ -98,12 +173,16 @@ class LLMClient:
                         backoff_seconds *= 2
                         continue
 
-                response.raise_for_status()
+                if response.status_code >= 400:
+                    # Surface the server's own explanation (e.g. "System message must be
+                    # at the beginning") instead of a bare "400 Bad Request".
+                    detail = _error_detail(response)
+                    raise RuntimeError(f"HTTP {response.status_code} from {endpoint}: {detail}")
                 data = response.json()
                 content = data["choices"][0]["message"]["content"]
                 usage = data.get("usage", {})
                 return LLMResult(content=content, model=data.get("model", model), latency_ms=latency_ms, usage=usage)
-            except (KeyError, IndexError, ValueError, httpx.HTTPError) as exc:
+            except (KeyError, IndexError, ValueError, httpx.HTTPError, RuntimeError) as exc:
                 last_error = str(exc)
                 if attempt < max_retries:
                     time.sleep(backoff_seconds)

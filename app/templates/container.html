@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+{% from "_macros.html" import sev_badge, outcome_badge, event_row %}
+{% block title %}DockSentinel — {{ name }}{% endblock %}
+{% block content %}
+{% set analyze_error = request.args.get('analyze_error') %}
+{% if analyze_error %}
+<div class="banner banner--critical" role="alert">
+  <svg class="banner__icon" aria-hidden="true"><use href="#ico-alert"/></svg>
+  <div class="banner__body"><span class="banner__title">Analyze failed.</span> <span class="text-secondary">{{ analyze_error }}</span></div>
+</div>
+{% endif %}
+
+<nav class="crumbs" aria-label="Breadcrumb">
+  <a href="{{ url_for('insights_page') }}">Events</a><span class="crumbs__sep">/</span><span>container</span>
+</nav>
+
+<div class="page-head">
+  <div>
+    <h1 class="page-head__title text-mono">{{ name }}</h1>
+    <p class="page-head__sub row">
+      {% if matching_rules %}<span class="badge badge--neutral badge--no-dot" title="Excluded by rule: {{ matching_rules|map(attribute='container_pattern')|join(', ') }}">excluded · {{ matching_rules[0].container_pattern }}</span>
+      {% elif attached %}<span class="badge badge--ok">attached · logs streaming</span>
+      {% elif known %}<span class="badge badge--neutral" title="Seen in history but the watcher is not currently streaming its logs">not attached</span>
+      {% else %}<span class="badge badge--neutral">no history</span>{% endif %}
+      {% if mute %}<span class="badge badge--neutral badge--no-dot badge--muted">muted until {{ mute.until_label() }}</span>{% endif %}
+      {% if last_verdict %}<span class="text-tertiary text-sm">last verdict {{ last_verdict.created_at|dt('%m-%d %H:%M') }}:</span> {{ sev_badge(last_verdict) }}{% endif %}
+      {% if last_alert %}<span class="text-tertiary text-sm">· last alert {{ last_alert.created_at|dt('%m-%d %H:%M') }}</span>{% endif %}
+    </p>
+  </div>
+  <div class="page-head__actions">
+    <form method="post" action="{{ url_for('sentinel_analyze_from_ui') }}">
+      <input type="hidden" name="container" value="{{ name }}" />
+      <button class="btn btn--primary"><svg aria-hidden="true"><use href="#ico-bolt"/></svg>Analyze now</button>
+    </form>
+    {% if mute %}
+      <form method="post" action="{{ url_for('unmute_container', container_name=name) }}">
+        <input type="hidden" name="next" value="{{ request.full_path }}" />
+        <button class="btn"><svg aria-hidden="true"><use href="#ico-bell"/></svg>Unmute</button>
+      </form>
+    {% else %}
+      <details class="menu">
+        <summary class="btn"><svg aria-hidden="true"><use href="#ico-bell-off"/></svg>Mute…</summary>
+        <div class="menu__pop">
+          {% for h, label in [(1, '1 hour'), (24, '24 hours'), (168, '7 days'), (0, 'indefinitely')] %}
+          <form method="post" action="{{ url_for('mute_container', container_name=name, hours=h) }}">
+            <input type="hidden" name="next" value="{{ request.full_path }}" />
+            <button class="menu__item">{{ label }}</button>
+          </form>
+          {% endfor %}
+        </div>
+      </details>
+    {% endif %}
+    {% if not matching_rules %}
+      <form method="post" action="{{ url_for('exclusions_page') }}" onsubmit="return confirm('Stop watching {{ name }} entirely? Its logs will no longer be read.');">
+        <input type="hidden" name="container_pattern" value="{{ name }}" />
+        <input type="hidden" name="next" value="{{ request.full_path }}" />
+        <button class="btn btn--ghost" title="Add an exclusion rule for this exact name">Exclude</button>
+      </form>
+    {% endif %}
+  </div>
+</div>
+
+<div class="row row--between mb-4">
+  <div class="chips" role="group" aria-label="Window">
+    {% for h, label in [(6, '6 h'), (24, '24 h'), (72, '3 d'), (168, '7 d')] %}
+      <a class="chip {% if hours == h %}chip--active{% endif %}" href="{{ url_for('container_page', name=name, hours=h) }}">{{ label }}</a>
+    {% endfor %}
+  </div>
+  <span class="text-tertiary text-sm">{{ total_events }} event{{ '' if total_events == 1 else 's' }} in window{% if funnel.lifecycle %} · {{ funnel.lifecycle }} lifecycle{% endif %}{% if funnel.excluded %} · {{ funnel.excluded }} excluded{% endif %}</span>
+</div>
+
+<div class="grid grid--dash">
+  <div class="stack">
+    <!-- ── J3: pipeline funnel ─────────────────────────────────────────── -->
+    <section class="card card--pad" aria-labelledby="funnel-title">
+      <div class="card__head">
+        <div>
+          <h2 class="card__title" id="funnel-title">Why did I (not) get alerted?</h2>
+          <p class="text-tertiary text-sm">Where this container's log chunks stopped in the last {{ hours }} h, and which knob stopped them.</p>
+        </div>
+        <span class="text-tertiary text-xs">{{ funnel.total_chunks }} chunks → <b class="{% if funnel.alerted %}text-ok{% endif %}">{{ funnel.alerted }} alert{{ '' if funnel.alerted == 1 else 's' }}</b></span>
+      </div>
+      {% if funnel.total_chunks %}
+      {% set maxc = funnel.stages[0].count if funnel.stages and funnel.stages[0].count else 1 %}
+      <ol class="funnel">
+        {% for s in funnel.stages %}
+        <li class="funnel__row {% if s.key == 'alerted' %}funnel__row--final{% endif %}">
+          <span class="funnel__label">{{ s.label }}</span>
+          <span class="funnel__bar"><span class="funnel__fill" style="width: {{ (100 * s.count / maxc)|round(1) }}%"></span></span>
+          <span class="funnel__count tabular">{{ s.count }}</span>
+          <span class="funnel__drop">
+            {% if s.dropped %}
+              <span class="text-warning tabular">−{{ s.dropped }}</span>
+              <span class="text-tertiary">{{ s.reason }}</span>
+              {% if s.knob %}<a class="knob" href="{{ url_for('settings_page') }}#{{ s.anchor }}">{{ s.knob }}</a>{% endif %}
+            {% endif %}
+          </span>
+        </li>
+        {% endfor %}
+      </ol>
+      {% if funnel.suppressions %}
+      <div class="mt-4">
+        <div class="eyebrow mb-2">Alert-worthy verdicts held back</div>
+        <ul class="list-reset stack stack--sm">
+          {% for label, n, anchor in funnel.suppressions %}
+          <li class="row row--between">
+            <span><b class="tabular">{{ n }}</b> × {{ label }}</span>
+            {% if anchor %}<a class="knob" href="{{ url_for('settings_page') }}#{{ anchor }}">tune</a>{% elif label == 'muted' %}<span class="text-tertiary text-xs">unmute above</span>{% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+      {% else %}
+      <div class="empty empty--compact">
+        <div class="empty__icon"><svg aria-hidden="true"><use href="#ico-inbox"/></svg></div>
+        <p class="empty__title">No log chunks in this window</p>
+        <p>
+          {% if matching_rules %}An exclusion rule matches this container, so its logs are never read.
+          {% elif not attached %}The watcher is not attached to this container — is it running? Start the sentinel or check exclusions.
+          {% else %}Nothing matched the prefilter yet. Use <b>Analyze now</b> to force one LLM pass.{% endif %}
+        </p>
+      </div>
+      {% endif %}
+    </section>
+
+    <!-- ── Timeline ────────────────────────────────────────────────────── -->
+    <section aria-labelledby="tl-title">
+      <div class="section-head">
+        <h2 class="section-title" id="tl-title">Timeline</h2>
+        <a class="btn btn--ghost btn--sm" href="{{ url_for('insights_page', container=name) }}">Open in Events<svg aria-hidden="true"><use href="#ico-arrow"/></svg></a>
+      </div>
+      <div class="card evlist">
+        {% for e in events %}
+          {{ event_row(e, show_container=False) }}
+        {% else %}
+          <div class="empty empty--compact"><p class="empty__title">Nothing in the last {{ hours }} h</p><p>Widen the window above.</p></div>
+        {% endfor %}
+      </div>
+    </section>
+  </div>
+
+  <div class="stack">
+    <!-- ── Knobs that apply ─────────────────────────────────────────────── -->
+    <section class="card card--pad" aria-labelledby="knobs-title">
+      <div class="card__head">
+        <h2 class="card__title" id="knobs-title">Knobs in effect</h2>
+        <a class="btn btn--ghost btn--sm" href="{{ url_for('settings_page') }}#alerts">Settings</a>
+      </div>
+      <dl class="kv">
+        <dt>Alert on classification ≥</dt><dd>{{ settings.alert_min_classification }}</dd>
+        <dt>Min confidence to alert</dt><dd>{{ settings.alert_min_confidence or 'off' }}</dd>
+        <dt>Alert cooldown</dt><dd>{{ settings.alert_cooldown_minutes }} min</dd>
+        <dt>Analysis cooldown</dt><dd>{{ settings.analysis_cooldown_minutes }} min</dd>
+        <dt>Dedup window</dt><dd>{{ settings.dedup_window_seconds }} s</dd>
+        <dt>Container LLM budget</dt><dd>{{ settings.container_rate_limit_count }} / {{ settings.container_rate_limit_window_seconds }} s</dd>
+        <dt>Coalesce window</dt><dd>{{ settings.chunk_coalesce_window_seconds or 'off' }}{% if settings.chunk_coalesce_window_seconds %} s{% endif %}</dd>
+        <dt>Global alert limit</dt><dd>{{ settings.alert_rate_limit_count }} / {{ settings.alert_rate_limit_window_seconds }} s</dd>
+        <dt>Mute</dt><dd>{% if mute %}until {{ mute.until_label() }}{% else %}none{% endif %}</dd>
+        <dt>Exclusion</dt><dd>{% if matching_rules %}{{ matching_rules[0].container_pattern }}{% else %}none{% endif %}</dd>
+      </dl>
+    </section>
+
+    <!-- ── Issues ──────────────────────────────────────────────────────── -->
+    <section class="card card--pad" aria-labelledby="ci-title">
+      <div class="card__head">
+        <h2 class="card__title" id="ci-title">Issues for this container</h2>
+        <span class="text-tertiary text-xs">{{ issues|length }}</span>
+      </div>
+      {% if issues %}
+      <ul class="list-reset">
+        {% for i in issues %}
+        <li><a class="row-link" style="padding:8px 0;" href="{{ url_for('issues_page', id=i.id) }}">
+          <span class="row-link__id">#{{ i.id }}</span>
+          <span class="row-link__title">{{ i.title }}</span>
+          {% if i.status == 'open' %}<span class="badge badge--ok">open</span>{% elif i.status == 'discussing' %}<span class="badge badge--warning">discussing</span>{% elif i.status == 'rejected' %}<span class="badge badge--critical">rejected</span>{% else %}<span class="badge badge--neutral">closed</span>{% endif %}
+        </a></li>
+        {% endfor %}
+      </ul>
+      {% if issues|selectattr('status', 'equalto', 'rejected')|list %}
+      <p class="text-tertiary text-xs mt-3">A <b>rejected</b> issue silences this container's alerts for 24 h after it was rejected.</p>
+      {% endif %}
+      {% else %}
+      <p class="text-secondary text-sm">None. Approve / Reject / Discuss an alert in Telegram to open one.</p>
+      {% endif %}
+    </section>
+  </div>
+</div>
+{% endblock %}

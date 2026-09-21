@@ -70,3 +70,28 @@ def test_generate_briefing_fallback_on_llm_error(tmp_path, monkeypatch):
 
         assert report.status == "llm_error"
         assert "Executive Summary" in report.markdown_content
+
+
+def test_briefing_evidence_lists_analyzed_and_open_issues(tmp_path, monkeypatch):
+    app = _build_app(tmp_path, monkeypatch)
+    from app.extensions import db
+    from app.models import AnalysisEvent, LocalIssue
+    from app.services.briefing import BriefingService
+
+    with app.app_context():
+        events = [
+            AnalysisEvent(container_id="a", container_name="web", status="analyzed", classification="noise", summary="fine"),
+            AnalysisEvent(container_id="a", container_name="web", status="analyzed", classification="critical", summary="crash"),
+            AnalysisEvent(container_id="b", container_name="db", status="skipped", classification="noise"),
+        ]
+        db.session.add_all(events)
+        db.session.add(LocalIssue(container_name="web", title="web crash", body="b", action="approve", status="open"))
+        db.session.commit()
+        text = BriefingService._evidence(events)
+
+    assert "skipped=1" in text
+    assert "classification=critical" in text
+    assert text.index("classification=critical") < text.index("classification=noise")
+    assert "summary=fine" in text
+    assert "web crash" in text
+    assert "container=db" not in text

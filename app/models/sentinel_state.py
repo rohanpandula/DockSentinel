@@ -15,6 +15,7 @@ class SentinelState(db.Model):
     last_error = db.Column(db.Text, nullable=True)
     llm_failure_count = db.Column(db.Integer, nullable=False, default=0)
     llm_last_failure_at = db.Column(db.DateTime, nullable=True)
+    llm_last_test_ok_at = db.Column(db.DateTime, nullable=True)
     updated_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive, onupdate=utcnow_naive)
 
     @classmethod
@@ -33,6 +34,7 @@ class SentinelState(db.Model):
             "started_at": self.started_at.isoformat() if self.started_at else None,
             "last_error": self.last_error,
             "llm_failure_count": self.llm_failure_count,
+            "llm_last_test_ok_at": self.llm_last_test_ok_at.isoformat() if self.llm_last_test_ok_at else None,
             "llm_last_failure_at": self.llm_last_failure_at.isoformat() if self.llm_last_failure_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

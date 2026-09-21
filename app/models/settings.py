@@ -3,6 +3,11 @@ from __future__ import annotations
 from app.extensions import db
 from app.time_utils import utcnow_naive
 
+DEFAULT_KEYWORD_LIST = (
+    "error,exception,fatal,panic,critical,refused,timeout,traceback,failed,denied,"
+    "killed,oom,unhealthy,segfault,out of memory"
+)
+
 
 class Settings(db.Model):
     __tablename__ = "settings"
@@ -12,6 +17,7 @@ class Settings(db.Model):
     llm_api_key = db.Column(db.String(255), nullable=False, default="ollama")
     llm_model = db.Column(db.String(255), nullable=False, default="llama3")
     llm_provider = db.Column(db.String(64), nullable=False, default="generic")
+    llm_extra_request_json = db.Column(db.Text, nullable=False, default="", server_default="")
     llm_transport = db.Column(db.String(16), nullable=False, default="api")
     cli_backend = db.Column(db.String(64), nullable=False, default="codex")
     cli_timeout_seconds = db.Column(db.Integer, nullable=False, default=120)
@@ -31,12 +37,14 @@ class Settings(db.Model):
     keyword_list = db.Column(
         db.Text,
         nullable=False,
-        default="error,exception,fatal,panic,critical,refused,timeout",
+        default=DEFAULT_KEYWORD_LIST,
     )
 
     alert_cooldown_minutes = db.Column(db.Integer, nullable=False, default=10)
     alert_rate_limit_count = db.Column(db.Integer, nullable=False, default=20)
     alert_rate_limit_window_seconds = db.Column(db.Integer, nullable=False, default=300)
+    alert_min_classification = db.Column(db.String(16), nullable=False, default="critical")
+    event_retention_days = db.Column(db.Integer, nullable=False, default=14)
 
     llm_timeout_seconds = db.Column(db.Integer, nullable=False, default=20)
     llm_max_retries = db.Column(db.Integer, nullable=False, default=2)
@@ -49,6 +57,21 @@ class Settings(db.Model):
 
     # --- Coalescing (batch chunks per container before LLM call) ---
     chunk_coalesce_window_seconds = db.Column(db.Integer, nullable=False, default=0)
+
+    # --- Restart-storm alerting (container die/oom events) ---
+    restart_alert_count = db.Column(db.Integer, nullable=False, default=3)
+    restart_alert_window_minutes = db.Column(db.Integer, nullable=False, default=10)
+
+    # --- Triage tuning (analysis cooldown / persistent-warning escalation / confidence gate) ---
+    analysis_cooldown_minutes = db.Column(db.Integer, nullable=False, default=15, server_default="15")
+    persistent_warning_count = db.Column(db.Integer, nullable=False, default=3, server_default="3")
+    persistent_warning_window_minutes = db.Column(db.Integer, nullable=False, default=60, server_default="60")
+    alert_min_confidence = db.Column(db.Float, nullable=False, default=0.0, server_default="0")
+
+    # --- Incident layer (one message per problem, edited in place) ---
+    incident_resolve_after_minutes = db.Column(db.Integer, nullable=False, default=30, server_default="30")
+    incident_reminder_hours = db.Column(db.Integer, nullable=False, default=0, server_default="0")
+    incident_notify_on_resolve = db.Column(db.Boolean, nullable=False, default=True, server_default="1")
 
     updated_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive, onupdate=utcnow_naive)
 
@@ -68,6 +91,7 @@ class Settings(db.Model):
             "llm_model": self.llm_model,
             "llm_provider": self.llm_provider,
             "llm_transport": self.llm_transport,
+            "llm_extra_request_json": self.llm_extra_request_json,
             "cli_backend": self.cli_backend,
             "cli_timeout_seconds": self.cli_timeout_seconds,
             "cli_max_retries": self.cli_max_retries,
@@ -83,6 +107,8 @@ class Settings(db.Model):
             "alert_cooldown_minutes": self.alert_cooldown_minutes,
             "alert_rate_limit_count": self.alert_rate_limit_count,
             "alert_rate_limit_window_seconds": self.alert_rate_limit_window_seconds,
+            "alert_min_classification": self.alert_min_classification,
+            "event_retention_days": self.event_retention_days,
             "llm_timeout_seconds": self.llm_timeout_seconds,
             "llm_max_retries": self.llm_max_retries,
             "dedup_window_seconds": self.dedup_window_seconds,
@@ -90,5 +116,14 @@ class Settings(db.Model):
             "container_rate_limit_window_seconds": self.container_rate_limit_window_seconds,
             "keyword_flush_delay_lines": self.keyword_flush_delay_lines,
             "chunk_coalesce_window_seconds": self.chunk_coalesce_window_seconds,
+            "restart_alert_count": self.restart_alert_count,
+            "restart_alert_window_minutes": self.restart_alert_window_minutes,
+            "analysis_cooldown_minutes": self.analysis_cooldown_minutes,
+            "persistent_warning_count": self.persistent_warning_count,
+            "persistent_warning_window_minutes": self.persistent_warning_window_minutes,
+            "alert_min_confidence": self.alert_min_confidence,
+            "incident_resolve_after_minutes": self.incident_resolve_after_minutes,
+            "incident_reminder_hours": self.incident_reminder_hours,
+            "incident_notify_on_resolve": self.incident_notify_on_resolve,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

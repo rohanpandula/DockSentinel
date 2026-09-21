@@ -1,8 +1,27 @@
 from __future__ import annotations
 
+import json
+
 from typing import Any
 
 from app.config_objects import LLMConfig
+
+
+def parse_extra_request_json(raw: str | None) -> dict[str, Any] | None:
+    """Operator-supplied JSON object merged into API request bodies.
+
+    Lets non-standard OpenAI-compatible servers be driven without code changes
+    (e.g. Qwen's ``{"enable_thinking": false}``). Invalid/non-object JSON is
+    ignored rather than breaking every call.
+    """
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        return None
+    return data if isinstance(data, dict) and data else None
 from app.services.llm_client import LLMResult
 
 
@@ -34,6 +53,9 @@ class LLMCallService:
         )
         if temperature is not None:
             call_kwargs["temperature"] = temperature
+        extra_body = parse_extra_request_json(config.extra_request_json)
+        if extra_body:
+            call_kwargs["extra_body"] = extra_body
 
         if hasattr(self._client, "complete"):
             return self._client.complete(**call_kwargs)
@@ -41,4 +63,5 @@ class LLMCallService:
         # Compatibility path for test doubles that only implement chat_completion.
         call_kwargs.pop("transport", None)
         call_kwargs.pop("cli_backend", None)
+        call_kwargs.pop("extra_body", None)
         return self._client.chat_completion(**call_kwargs)

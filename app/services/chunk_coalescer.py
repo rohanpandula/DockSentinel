@@ -22,11 +22,13 @@ FlushCallback = Callable[[str, str, list[str]], None]
 
 
 class ChunkCoalescer:
-    """Holds keyword-matched chunks per container in a sliding window.
+    """Holds keyword-matched chunks per container for up to ``window_seconds``.
 
-    Each new chunk for a container resets the window timer. When the timer
-    fires without new arrivals, all accumulated chunks are flushed to the
-    callback in a single batch. The callback runs inside a Flask app context.
+    The timer starts with the FIRST chunk of a batch and is NOT reset by later
+    arrivals (a pure debounce starved containers that log a matching line more
+    often than the window — they were queued forever and never analysed). All
+    chunks accumulated when the timer fires are flushed as one batch; a chunk
+    arriving afterwards starts a new batch. Callback runs in an app context.
     """
 
     def __init__(self, app: Flask, on_flush: FlushCallback) -> None:
@@ -53,11 +55,12 @@ class ChunkCoalescer:
             else:
                 entry.container_name = container_name
             entry.chunks.append(chunk_text)
-            if entry.timer is not None:
-                entry.timer.cancel()
-            entry.timer = threading.Timer(window_seconds, self._fire, args=(container_id,))
-            entry.timer.daemon = True
-            entry.timer.start()
+            if entry.timer is None:
+                # Max-age semantics: the batch flushes window_seconds after its
+                # first chunk regardless of how many more arrive meanwhile.
+                entry.timer = threading.Timer(window_seconds, self._fire, args=(container_id,))
+                entry.timer.daemon = True
+                entry.timer.start()
 
     def _fire(self, container_id: str) -> None:
         with self._lock:

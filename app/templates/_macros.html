@@ -1,0 +1,44 @@
+{# Shared UI atoms. Import with: {% from "_macros.html" import sev_badge, container_link, outcome_badge, event_row %} #}
+
+{% macro sev_badge(e) -%}
+  {% if e.classification == 'critical' %}<span class="badge badge--critical">critical</span>
+  {% elif e.classification == 'warning' %}<span class="badge badge--warning">warning</span>
+  {% elif e.classification == 'noise' %}<span class="badge badge--noise">noise</span>
+  {% elif e.status in ('llm_error', 'parse_error') %}<span class="badge badge--critical badge--no-dot" title="Pipeline error — no classification">error</span>
+  {% elif e.status == 'container_event' %}<span class="badge badge--info badge--no-dot" title="Docker lifecycle event">{{ e.matched_keywords or 'lifecycle' }}</span>
+  {% else %}<span class="badge badge--neutral badge--no-dot" title="Not classified">—</span>{% endif %}
+{%- endmacro %}
+
+{% macro container_link(name, cls='') -%}
+  {% if name %}<a class="clink {{ cls }}" href="{{ url_for('container_page', name=name) }}" title="Open container drill-down">{{ name }}</a>{% else %}<span class="text-tertiary">—</span>{% endif %}
+{%- endmacro %}
+
+{% macro outcome_badge(o) -%}
+  {% if o.kind == 'sent' %}<span class="badge badge--ok badge--no-dot" title="Telegram alert sent">alerted</span>
+  {% elif o.kind == 'suppressed' %}<span class="badge badge--warning badge--no-dot" title="{{ o.why }}">{{ o.label }}</span>
+  {% elif o.kind == 'below' %}<span class="badge badge--neutral badge--no-dot" title="{{ o.why }}">below threshold</span>
+  {% elif o.kind == 'never' %}<span class="badge badge--neutral badge--no-dot" title="{{ o.why }}">never reached LLM</span>
+  {% endif %}
+{%- endmacro %}
+
+{% macro status_chip(status, small=True) -%}
+  {% set ex = explain_status(status) %}
+  <span class="badge badge--neutral badge--no-dot" title="{{ ex.why }}">{{ ex.label }}</span>
+{%- endmacro %}
+
+{# Compact event row (used on Now / container / spotlight history). Links to the spotlight view. #}
+{% macro event_row(e, show_container=True) -%}
+  <a class="evrow" href="{{ url_for('insights_page', event=e.id, container=e.container_name) }}" data-ts="{{ e.created_at.isoformat() if e.created_at else '' }}">
+    <span class="evrow__time text-mono">{{ e.created_at|dt('%H:%M') }}<span class="evrow__date">{{ e.created_at|dt('%m-%d') }}</span></span>
+    {{ sev_badge(e) }}
+    <span class="evrow__main">
+      {% if show_container %}<span class="evrow__container">{{ e.container_name }}</span>{% endif %}
+      <span class="evrow__text">{{ e.summary or explain_status(e.status).label }}</span>
+    </span>
+    <span class="evrow__flags">
+      {% if e.status != 'analyzed' and e.status != 'container_event' %}<span class="badge badge--neutral badge--no-dot">{{ explain_status(e.status).label }}</span>{% endif %}
+      {% if e.alert_sent %}<span class="badge badge--ok badge--no-dot">alerted</span>{% elif e.alert_error %}<span class="badge badge--warning badge--no-dot" title="{{ e.alert_error }}">held</span>{% endif %}
+    </span>
+    <span class="evrow__new" data-new-marker hidden>new</span>
+  </a>
+{%- endmacro %}

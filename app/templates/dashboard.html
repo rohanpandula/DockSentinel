@@ -1,155 +1,411 @@
 {% extends "base.html" %}
-{% block title %}DockSentinel — Overview{% endblock %}
+{% from "_macros.html" import sev_badge, container_link, outcome_badge, event_row %}
+{% block title %}DockSentinel — Now{% endblock %}
 {% block content %}
-<div class="page-header">
-  <div>
-    <h1 class="page-title">Overview</h1>
-    <p class="page-subtitle">Real-time sentinel status, daily counts, and the most recent events across your fleet.</p>
-  </div>
-  <div class="row">
-    {% if state.enabled %}
-      <span class="badge badge--ok">running</span>
-    {% else %}
-      <span class="badge badge--neutral">stopped</span>
-    {% endif %}
-    <span class="text-tertiary mono">{{ state.runtime_status }}</span>
-  </div>
+{% set kind, verdict_title, verdict_reason = verdict %}
+
+{% if analyze_error %}
+<div class="banner banner--critical" role="alert">
+  <svg class="banner__icon" aria-hidden="true"><use href="#ico-alert"/></svg>
+  <div class="banner__body"><span class="banner__title">Analyze failed.</span> <span class="text-secondary">{{ analyze_error }}</span></div>
 </div>
+{% endif %}
 
-<div class="grid-dashboard">
-  <section class="card card--padded">
-    <div class="card__header">
-      <h2 class="card__title card__title--lg">Sentinel</h2>
-      <div class="row">
-        <form method="post" action="{{ url_for('sentinel_toggle_from_ui') }}">
-          <input type="hidden" name="enabled" value="true" />
-          <button class="btn btn--primary btn--sm" {% if state.enabled %}disabled{% endif %}>Start</button>
-        </form>
-        <form method="post" action="{{ url_for('sentinel_toggle_from_ui') }}">
-          <input type="hidden" name="enabled" value="false" />
-          <button class="btn btn--sm" {% if not state.enabled %}disabled{% endif %}>Stop</button>
-        </form>
-      </div>
+<!-- ── J1: verdict strip — answer "is everything OK?" in one line ─────────── -->
+<section class="verdict verdict--{{ kind }}" aria-labelledby="hero-title">
+  <div class="verdict__main">
+    <span class="verdict__dot pulse {% if kind == 'ok' %}pulse--live{% endif %}" aria-hidden="true"></span>
+    <div class="verdict__text">
+      <h1 class="verdict__title" id="hero-title">{{ verdict_title }}</h1>
+      <p class="verdict__reason">{{ verdict_reason }}{% if kind == 'degraded' and state.llm_failure_count %} <span class="text-tertiary">· {{ state.llm_failure_count }} LLM failure{{ '' if state.llm_failure_count == 1 else 's' }}</span>{% endif %}</p>
     </div>
+  </div>
+  <div class="verdict__facts">
+    <span class="verdict__fact"><b class="tabular">{{ active_containers|length }}</b> watched</span>
+    <span class="verdict__fact"><b class="tabular">{{ counts.alerted }}</b> alerted today</span>
+    {% if open_incident_count %}<span class="verdict__fact"><a href="{{ url_for('incidents_page') }}"><b class="tabular">{{ open_incident_count }}</b> open incident{{ '' if open_incident_count == 1 else 's' }}</a></span>{% endif %}
+    <span class="verdict__fact"><a href="{{ url_for('issues_page', status='open') }}"><b class="tabular">{{ open_issues }}</b> open issue{{ '' if open_issues == 1 else 's' }}</a></span>
+    <span class="verdict__fact" data-since-pill hidden><b class="tabular" data-since-count>0</b> new since <span data-since-label></span></span>
+    <span class="verdict__fact text-tertiary" title="Runtime status">{{ state.runtime_status }}{% if state.started_at %} · since {{ state.started_at|dt('%m-%d %H:%M') }}{% endif %}</span>
+  </div>
+  <div class="verdict__actions">
+    {% if state.enabled %}
+      <form method="post" action="{{ url_for('sentinel_toggle_from_ui') }}">
+        <input type="hidden" name="enabled" value="false" />
+        <button class="btn"><svg aria-hidden="true"><use href="#ico-stop"/></svg>Stop sentinel</button>
+      </form>
+    {% else %}
+      <form method="post" action="{{ url_for('sentinel_toggle_from_ui') }}">
+        <input type="hidden" name="enabled" value="true" />
+        <button class="btn btn--primary"><svg aria-hidden="true"><use href="#ico-play"/></svg>Start sentinel</button>
+      </form>
+    {% endif %}
+  </div>
+</section>
 
-    <div class="grid" style="grid-template-columns: repeat(3, 1fr); gap: 20px;">
-      <div class="stat">
-        <span class="stat__label">Active</span>
-        <span class="stat__value {% if active_containers|length > 0 %}stat__value--ok{% endif %} tabular">{{ active_containers|length }}</span>
-        <span class="text-tertiary" style="font-size: 11px;">containers attached</span>
-      </div>
-      <div class="stat">
-        <span class="stat__label">LLM failures</span>
-        <span class="stat__value {% if state.llm_failure_count > 0 %}stat__value--warning{% endif %} tabular">{{ state.llm_failure_count }}</span>
-        <span class="text-tertiary" style="font-size: 11px;">since last restart</span>
-      </div>
-      <div class="stat">
-        <span class="stat__label">Runtime</span>
-        <span class="stat__value tabular" style="font-size: 16px; letter-spacing: 0;">{{ state.runtime_status }}</span>
-        <span class="text-tertiary" style="font-size: 11px;">{% if state.started_at %}since {{ state.started_at }}{% else %}not started{% endif %}</span>
-      </div>
+{% if show_setup %}
+<!-- ── J4: guided setup (replaces the checklist card) ───────────────────── -->
+{% set done_n = [setup.llm, setup.telegram, setup.started]|select|list|length %}
+{% set current_step = 1 if not setup.llm else (2 if not setup.telegram else 3) %}
+<section class="card setup" data-setup data-step="{{ current_step }}" aria-labelledby="setup-title">
+  <div class="setup__head">
+    <div>
+      <h2 class="section-title" id="setup-title">Get set up</h2>
+      <p class="text-secondary text-sm">Three steps: connect a model, connect Telegram, start watching. Fields save as you go.</p>
     </div>
+    <div class="row">
+      <span class="text-tertiary text-xs">{{ done_n }} / 3 done</span>
+      {% if setup.complete %}<a class="btn btn--sm btn--ghost" href="{{ url_for('dashboard') }}">Hide</a>{% endif %}
+    </div>
+  </div>
 
-    <form method="post" action="{{ url_for('sentinel_analyze_from_ui') }}" class="mt-lg" data-analyze-form>
-      <div class="row" style="gap: 8px; align-items: stretch;">
-        <select class="select mono" name="container_choice" data-analyze-select style="flex: 1;">
-          {% if known_containers %}
-            <option value="" disabled selected>Pick a container…</option>
-            {% for name in known_containers %}
-              <option value="{{ name }}">{{ name }}</option>
-            {% endfor %}
-            <option value="__other__">Other…</option>
-          {% else %}
-            <option value="__other__" selected>Enter container manually…</option>
-          {% endif %}
-        </select>
-        <button class="btn">Analyze now</button>
+  <ol class="stepper" role="tablist">
+    <li class="stepper__step {% if setup.llm %}is-done{% endif %} {% if current_step == 1 %}is-current{% endif %}">
+      <button type="button" class="stepper__btn" data-setup-tab="1" role="tab" aria-selected="{{ 'true' if current_step == 1 else 'false' }}">
+        <span class="stepper__mark"><svg aria-hidden="true"><use href="#ico-check"/></svg><span>1</span></span>
+        <span class="stepper__label">LLM<span class="stepper__hint">{% if setup.llm %}{{ settings.llm_transport }} · {{ settings.llm_model }}{% else %}not tested yet{% endif %}</span></span>
+      </button>
+    </li>
+    <li class="stepper__step {% if setup.telegram %}is-done{% endif %} {% if current_step == 2 %}is-current{% endif %}">
+      <button type="button" class="stepper__btn" data-setup-tab="2" role="tab" aria-selected="{{ 'true' if current_step == 2 else 'false' }}">
+        <span class="stepper__mark"><svg aria-hidden="true"><use href="#ico-check"/></svg><span>2</span></span>
+        <span class="stepper__label">Telegram<span class="stepper__hint">{% if setup.telegram %}chat {{ settings.telegram_chat_id }}{% else %}token + chat id{% endif %}</span></span>
+      </button>
+    </li>
+    <li class="stepper__step {% if setup.started %}is-done{% endif %} {% if current_step == 3 %}is-current{% endif %}">
+      <button type="button" class="stepper__btn" data-setup-tab="3" role="tab" aria-selected="{{ 'true' if current_step == 3 else 'false' }}">
+        <span class="stepper__mark"><svg aria-hidden="true"><use href="#ico-check"/></svg><span>3</span></span>
+        <span class="stepper__label">Start<span class="stepper__hint">{% if setup.started %}running{% else %}attach & triage{% endif %}</span></span>
+      </button>
+    </li>
+  </ol>
+
+  <!-- Step 1: LLM -->
+  <div class="setup__panel" data-setup-panel="1" role="tabpanel" {% if current_step != 1 %}hidden{% endif %}>
+    <form class="setup__form" data-setup-form="llm" onsubmit="return false;">
+      <div class="field-grid">
+        <label class="field">
+          <span class="field__label">Transport</span>
+          <select class="select" name="llm_transport">
+            <option value="api" {% if settings.llm_transport == 'api' %}selected{% endif %}>api — OpenAI-compatible HTTP</option>
+            <option value="cli" {% if settings.llm_transport == 'cli' %}selected{% endif %}>cli — local agent CLI</option>
+          </select>
+        </label>
+        <label class="field">
+          <span class="field__label">Model</span>
+          <input class="input mono" name="llm_model" value="{{ settings.llm_model }}" list="setup-models" />
+          <datalist id="setup-models"></datalist>
+          <span class="field__help" data-setup-models-hint>Ollama models appear here once the base URL is reachable.</span>
+        </label>
+        <label class="field field--wide" data-setup-api-only>
+          <span class="field__label">Base URL</span>
+          <input class="input mono" name="llm_base_url" value="{{ settings.llm_base_url }}" placeholder="http://host.docker.internal:11434/v1" />
+          <span class="field__help">OpenAI-compatible root. Ollama: <code>http://host.docker.internal:11434/v1</code>.</span>
+        </label>
+        <label class="field" data-setup-api-only>
+          <span class="field__label">API key {% if settings.llm_api_key %}<span class="secret-flag secret-flag--set">set</span>{% else %}<span class="secret-flag secret-flag--unset">not set</span>{% endif %}</span>
+          <input class="input mono" name="llm_api_key" type="password" autocomplete="new-password" placeholder="{{ 'leave blank to keep' if settings.llm_api_key else 'ollama / sk-…' }}" />
+        </label>
+        <label class="field" data-setup-cli-only hidden>
+          <span class="field__label">CLI backend</span>
+          <select class="select" name="cli_backend">
+            {% for b in ['codex','claude','gemini','ollama'] %}<option value="{{ b }}" {% if settings.cli_backend == b %}selected{% endif %}>{{ b }}</option>{% endfor %}
+          </select>
+        </label>
       </div>
-      <input
-        class="input mono mt-md"
-        name="container"
-        placeholder="container name or id"
-        data-analyze-custom
-        {% if known_containers %}hidden{% endif %}
-      />
+      <div class="setup__actions">
+        <button type="button" class="btn btn--primary" data-setup-test="llm"><svg aria-hidden="true"><use href="#ico-bolt"/></svg>Save &amp; test LLM</button>
+        <span class="inline-output flex-1" data-setup-status="llm" role="status" aria-live="polite">{% if setup.llm %}Verified {{ state.llm_last_test_ok_at|dt }}{% endif %}</span>
+        <button type="button" class="btn btn--ghost" data-setup-next="2">Next<svg aria-hidden="true"><use href="#ico-arrow"/></svg></button>
+      </div>
     </form>
-  </section>
+  </div>
+
+  <!-- Step 2: Telegram -->
+  <div class="setup__panel" data-setup-panel="2" role="tabpanel" {% if current_step != 2 %}hidden{% endif %}>
+    <form class="setup__form" data-setup-form="telegram" onsubmit="return false;">
+      <ol class="howto">
+        <li>Open Telegram, talk to <b>@BotFather</b>, <code>/newbot</code>, copy the token.</li>
+        <li>Paste it below and press <b>Save token</b>.</li>
+        <li>Send <code>/start</code> to your new bot, then press <b>Detect chat id</b>.</li>
+      </ol>
+      <div class="field-grid">
+        <label class="field">
+          <span class="field__label">Bot token {% if settings.telegram_token %}<span class="secret-flag secret-flag--set">set</span>{% else %}<span class="secret-flag secret-flag--unset">not set</span>{% endif %}</span>
+          <div class="input-row">
+            <input class="input mono" name="telegram_token" type="password" autocomplete="new-password" placeholder="{{ 'leave blank to keep' if settings.telegram_token else '123456:ABC…' }}" />
+            <button type="button" class="btn" data-setup-save="telegram">Save token</button>
+          </div>
+        </label>
+        <label class="field">
+          <span class="field__label">Chat id</span>
+          <div class="input-row">
+            <input class="input mono" name="telegram_chat_id" value="{{ settings.telegram_chat_id or '' }}" placeholder="e.g. 123456789 or -100…" />
+            <button type="button" class="btn" data-setup-detect title="Reads the last chat that messaged the bot">Detect chat id</button>
+          </div>
+          <span class="field__help" data-setup-detect-hint>{% if last_seen_chat %}Last seen: {{ last_seen_chat.title or '' }} · {{ last_seen_chat.chat_id }}{% else %}Requires the sentinel process to be running (it polls the bot).{% endif %}</span>
+        </label>
+      </div>
+      <div class="setup__actions">
+        <button type="button" class="btn btn--primary" data-setup-test="telegram"><svg aria-hidden="true"><use href="#ico-send"/></svg>Save &amp; send test message</button>
+        <span class="inline-output flex-1" data-setup-status="telegram" role="status" aria-live="polite">{% if setup.telegram %}Token and chat id are set.{% endif %}</span>
+        <button type="button" class="btn btn--ghost" data-setup-next="1"><svg aria-hidden="true"><use href="#ico-back"/></svg>Back</button>
+        <button type="button" class="btn btn--ghost" data-setup-next="3">Next<svg aria-hidden="true"><use href="#ico-arrow"/></svg></button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Step 3: Start -->
+  <div class="setup__panel" data-setup-panel="3" role="tabpanel" {% if current_step != 3 %}hidden{% endif %}>
+    <div class="setup__summary">
+      <div class="kv-tiles">
+        <div class="kv-tile {% if setup.llm %}kv-tile--ok{% else %}kv-tile--warn{% endif %}"><span class="eyebrow">LLM</span><b>{{ 'verified' if setup.llm else 'not verified' }}</b><span class="text-tertiary text-xs text-mono">{{ settings.llm_transport }} · {{ settings.llm_model }}</span></div>
+        <div class="kv-tile {% if setup.telegram %}kv-tile--ok{% else %}kv-tile--warn{% endif %}"><span class="eyebrow">Telegram</span><b>{{ 'connected' if setup.telegram else 'missing' }}</b><span class="text-tertiary text-xs text-mono">chat {{ settings.telegram_chat_id or '—' }}</span></div>
+        <div class="kv-tile"><span class="eyebrow">Alert on</span><b>{{ settings.alert_min_classification }}+</b><span class="text-tertiary text-xs">cooldown {{ settings.alert_cooldown_minutes }} min</span></div>
+      </div>
+      <p class="text-secondary text-sm mt-3">Starting attaches to every running container (minus exclusions), streams logs through the keyword prefilter, and asks the LLM about anything that matches. Alerts go to Telegram with Approve / Reject / Discuss / Mute buttons.</p>
+    </div>
+    <div class="setup__actions">
+      {% if not state.enabled %}
+      <form method="post" action="{{ url_for('sentinel_toggle_from_ui') }}">
+        <input type="hidden" name="enabled" value="true" />
+        <button class="btn btn--primary btn--lg"><svg aria-hidden="true"><use href="#ico-play"/></svg>Start sentinel</button>
+      </form>
+      {% else %}
+      <span class="inline-output inline-output--ok">Sentinel is running.</span>
+      {% endif %}
+      <button type="button" class="btn btn--ghost" data-setup-next="2"><svg aria-hidden="true"><use href="#ico-back"/></svg>Back</button>
+      <a class="btn btn--ghost" href="{{ url_for('settings_page') }}">All settings</a>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+<div class="grid grid--dash mt-4">
+  <div class="stack">
+
+    <!-- ── Open incidents — the single most important thing on this page ── -->
+    {% if open_incidents %}
+    <section aria-labelledby="incidents-title" data-open-incidents>
+      <div class="section-head">
+        <h2 class="section-title" id="incidents-title">Open incidents</h2>
+        <a class="btn btn--ghost btn--sm" href="{{ url_for('incidents_page') }}">All incidents<svg aria-hidden="true"><use href="#ico-arrow"/></svg></a>
+      </div>
+      <div class="card attn">
+        {% for i in open_incidents %}
+          <a class="attn__row" href="{{ url_for('incidents_page', id=i.id) }}">
+            {{ sev_badge(i) }}
+            <span class="attn__body">
+              <span class="attn__container">{{ i.container_name or '—' }}</span>
+              <span class="attn__summary">{{ i.title or i.signature }}</span>
+              <span class="attn__why">
+                <span class="badge badge--critical badge--no-dot">×{{ i.occurrence_count }}</span>
+                <span class="text-tertiary">ongoing {{ i.duration_label() }} · first seen {{ i.first_seen_at|dt('%m-%d %H:%M') }}</span>
+              </span>
+            </span>
+            <span class="attn__time text-mono">{{ i.last_seen_at|dt('%H:%M') }}</span>
+          </a>
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+
+    <!-- ── Needs attention ──────────────────────────────────────────────── -->
+    <section aria-labelledby="attn-title">
+      <div class="section-head">
+        <h2 class="section-title" id="attn-title">Needs attention</h2>
+        <a class="btn btn--ghost btn--sm" href="{{ url_for('insights_page', outcome='suppressed') }}">All held alerts<svg aria-hidden="true"><use href="#ico-arrow"/></svg></a>
+      </div>
+      {% if attention %}
+      <div class="card attn">
+        {% for a in attention %}
+          {% set e = a.event %}
+          <a class="attn__row" href="{{ url_for('insights_page', event=e.id, container=e.container_name) }}">
+            {{ sev_badge(e) }}
+            <span class="attn__body">
+              <span class="attn__container">{{ e.container_name }}</span>
+              <span class="attn__summary">{{ e.summary or '—' }}</span>
+              <span class="attn__why">{{ outcome_badge(a.outcome) }} {% if a.outcome.why %}<span class="text-tertiary">{{ a.outcome.why }}</span>{% endif %}</span>
+            </span>
+            <span class="attn__time text-mono">{{ e.created_at|dt('%H:%M') }}</span>
+          </a>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="card allclear">
+        <svg aria-hidden="true"><use href="#ico-shield"/></svg>
+        <span>Nothing pending — every critical/warning verdict today was delivered{% if not counts.critical and not counts.warning %} (there were none){% endif %}.</span>
+      </div>
+      {% endif %}
+    </section>
+
+    <!-- ── Fleet ────────────────────────────────────────────────────────── -->
+    <section aria-labelledby="fleet-title">
+      <div class="section-head">
+        <h2 class="section-title" id="fleet-title">Fleet today</h2>
+        <span class="text-tertiary text-sm">{{ fleet|length }} container{{ '' if fleet|length == 1 else 's' }} with events · click one to trace its pipeline</span>
+      </div>
+      {% if fleet %}
+      <div class="fleet">
+        {% for c in fleet %}
+          <a class="ctile ctile--{{ c.worst or ('error' if c.errors else 'quiet') }}" href="{{ url_for('container_page', name=c.name) }}">
+            <span class="ctile__name" title="{{ c.name }}">{{ c.name }}</span>
+            <span class="ctile__verdict">
+              {% if c.worst == 'critical' %}critical{% elif c.worst == 'warning' %}warning{% elif c.errors %}LLM error{% elif c.worst == 'noise' %}noise only{% else %}quiet{% endif %}
+            </span>
+            <span class="ctile__meta">
+              <span class="tabular">{{ c.events }}</span> ev{% if c.alerted %} · <span class="text-ok tabular">{{ c.alerted }}</span> alerted{% endif %}{% if c.suppressed %} · <span class="text-warning tabular">{{ c.suppressed }}</span> held{% endif %}
+            </span>
+            <span class="ctile__flags">
+              {% if c.muted %}<span class="badge badge--neutral badge--no-dot badge--muted">muted</span>{% endif %}
+              {% if c.excluded %}<span class="badge badge--neutral badge--no-dot">excluded</span>{% endif %}
+              {% if c.attached %}<span class="badge badge--ok badge--no-dot">attached</span>{% endif %}
+            </span>
+          </a>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="card empty empty--compact">
+        <div class="empty__icon"><svg aria-hidden="true"><use href="#ico-box"/></svg></div>
+        <p class="empty__title">No container activity today</p>
+        <p>{% if state.enabled %}Logs are being watched; tiles appear as chunks pass the prefilter.{% else %}Start the sentinel to begin watching.{% endif %}</p>
+      </div>
+      {% endif %}
+    </section>
+
+    <!-- ── Recent events ────────────────────────────────────────────────── -->
+    <section aria-labelledby="recent-title">
+      <div class="section-head">
+        <h2 class="section-title" id="recent-title">Recent events</h2>
+        <a class="btn btn--ghost btn--sm" href="{{ url_for('insights_page') }}">All events<svg aria-hidden="true"><use href="#ico-arrow"/></svg></a>
+      </div>
+      <div class="card evlist" data-recent-events>
+        {% for e in events %}
+          {{ event_row(e) }}
+        {% else %}
+          <div class="empty empty--compact">
+            <div class="empty__icon"><svg aria-hidden="true"><use href="#ico-inbox"/></svg></div>
+            <p class="empty__title">No events yet</p>
+            <p>Once the sentinel is running, every log chunk that reaches the LLM shows up here.</p>
+            {% if not state.enabled %}
+            <form method="post" action="{{ url_for('sentinel_toggle_from_ui') }}">
+              <input type="hidden" name="enabled" value="true" />
+              <button class="btn btn--primary btn--sm">Start sentinel</button>
+            </form>
+            {% else %}
+            <a class="btn btn--sm" href="{{ url_for('insights_page') }}">Open events</a>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+  </div>
 
   <div class="stack">
-    <section class="card">
-      <h2 class="card__title">Today</h2>
-      <dl class="kv mt-md">
-        <dt>Critical</dt>
-        <dd><span class="tabular" style="color: var(--critical);">{{ counts.critical }}</span></dd>
-        <dt>Warning</dt>
-        <dd><span class="tabular" style="color: var(--warning);">{{ counts.warning }}</span></dd>
-        <dt>Noise</dt>
-        <dd><span class="tabular text-tertiary">{{ counts.noise }}</span></dd>
-      </dl>
-      <form method="post" action="{{ url_for('reports_generate') }}" class="mt-md">
-        <button class="btn btn--ghost" style="width: 100%;">Generate nightly report</button>
+    <!-- ── Today's numbers ─────────────────────────────────────────────── -->
+    <section class="card card--pad" aria-labelledby="today-title">
+      <div class="card__head">
+        <h2 class="card__title" id="today-title">Today</h2>
+        <span class="text-tertiary text-xs">since 00:00 UTC</span>
+      </div>
+      <div class="stats stats--compact">
+        <a class="stat stat--critical {% if not counts.critical %}stat--zero{% endif %}" href="{{ url_for('insights_page', classification='critical') }}">
+          <span class="stat__label">Critical</span>
+          <span class="stat__value">{{ counts.critical }}</span>
+        </a>
+        <a class="stat stat--warning {% if not counts.warning %}stat--zero{% endif %}" href="{{ url_for('insights_page', classification='warning') }}">
+          <span class="stat__label">Warning</span>
+          <span class="stat__value">{{ counts.warning }}</span>
+        </a>
+        <a class="stat stat--muted" href="{{ url_for('insights_page', classification='noise', status='analyzed') }}" title="LLM analysed the chunk and classified it as noise">
+          <span class="stat__label">Noise (LLM)</span>
+          <span class="stat__value">{{ counts.noise }}</span>
+        </a>
+        <a class="stat stat--muted" href="{{ url_for('insights_page', outcome='never') }}" title="Never sent to the LLM: prefilter, dedup, rate limit, coalescing or exclusion">
+          <span class="stat__label">Skipped (prefilter)</span>
+          <span class="stat__value">{{ counts.skipped }}</span>
+        </a>
+        {% if counts.errors %}
+        <a class="stat stat--warning" href="{{ url_for('insights_page', status='llm_error') }}" title="LLM or parse errors">
+          <span class="stat__label">Errors</span>
+          <span class="stat__value">{{ counts.errors }}</span>
+        </a>
+        {% endif %}
+      </div>
+    </section>
+
+    <!-- ── Analyze now ─────────────────────────────────────────────────── -->
+    <section class="card card--pad" aria-labelledby="analyze-title">
+      <div class="card__head">
+        <h2 class="card__title" id="analyze-title">Analyze now</h2>
+        <svg class="text-tertiary" width="16" height="16" aria-hidden="true"><use href="#ico-bolt"/></svg>
+      </div>
+      <p class="text-secondary text-sm mb-4">Pull one container's latest logs through the LLM right now, bypassing the prefilter. You land on the verdict.</p>
+      <form method="post" action="{{ url_for('sentinel_analyze_from_ui') }}" data-analyze-form class="stack stack--sm">
+        <label class="field">
+          <span class="field__label">Container</span>
+          <select class="select mono" name="container_choice" data-analyze-select>
+            {% if known_containers %}
+              <option value="" disabled selected>Pick a container…</option>
+              {% for name in known_containers %}
+                <option value="{{ name }}">{{ name }}</option>
+              {% endfor %}
+              <option value="__other__">Other…</option>
+            {% else %}
+              <option value="__other__" selected>Enter container manually…</option>
+            {% endif %}
+          </select>
+        </label>
+        <input class="input mono" name="container" placeholder="container name or id" aria-label="Container name or id" data-analyze-custom {% if known_containers %}hidden{% endif %} />
+        <button class="btn btn--primary btn--block"><svg aria-hidden="true"><use href="#ico-bolt"/></svg>Analyze now</button>
       </form>
     </section>
 
-    {% if latest_report %}
-    <section class="card">
-      <h2 class="card__title">Latest report</h2>
-      <a class="report-link mt-md" href="{{ url_for('reports_page', id=latest_report.id) }}">
-        <span class="report-link__id">#{{ latest_report.id }}</span>
-        <span class="text-mono">{{ latest_report.created_at }}</span>
-        <span class="badge badge--neutral badge--no-dot">view</span>
-      </a>
+    <!-- ── Muted containers ────────────────────────────────────────────── -->
+    <section class="card card--pad" aria-labelledby="mutes-title" data-mutes-card>
+      <div class="card__head">
+        <h2 class="card__title" id="mutes-title">Muted containers</h2>
+        <span class="text-tertiary text-xs">{{ mutes|length }}</span>
+      </div>
+      {% if mutes %}
+        <ul class="list-reset stack stack--sm">
+          {% for m in mutes %}
+            <li class="row row--between">
+              <span class="truncate" title="{{ m.container_name }}">
+                {{ container_link(m.container_name, 'text-mono text-sm') }}
+                <span class="text-tertiary text-xs"> · until {{ m.until_label() }}</span>
+              </span>
+              <form method="post" action="{{ url_for('unmute_container', container_name=m.container_name) }}">
+                <input type="hidden" name="next" value="{{ url_for('dashboard') }}" />
+                <button class="btn btn--sm btn--ghost">Unmute</button>
+              </form>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="text-secondary text-sm">No containers are muted. Mute one from an event, an issue, a container page, or the 🔕 button in Telegram.</p>
+      {% endif %}
     </section>
-    {% endif %}
+
+    <!-- ── Latest report ───────────────────────────────────────────────── -->
+    <section class="card card--pad" aria-labelledby="report-title">
+      <div class="card__head">
+        <h2 class="card__title" id="report-title">Latest report</h2>
+        <a class="btn btn--ghost btn--sm" href="{{ url_for('reports_page') }}">Archive</a>
+      </div>
+      {% if latest_report %}
+        <a class="row-link" style="border:0; padding:0;" href="{{ url_for('reports_page', id=latest_report.id) }}">
+          <span class="row-link__id">#{{ latest_report.id }}</span>
+          <span class="row-link__title text-mono text-sm">{{ latest_report.created_at|dt }}</span>
+          {% if latest_report.status == 'generated' %}<span class="badge badge--ok">generated</span>{% elif latest_report.status == 'llm_error' %}<span class="badge badge--critical">llm error</span>{% else %}<span class="badge badge--neutral">{{ latest_report.status }}</span>{% endif %}
+        </a>
+      {% else %}
+        <p class="text-secondary text-sm">No nightly report yet. The scheduler writes one each night, or generate one now.</p>
+      {% endif %}
+      <form method="post" action="{{ url_for('reports_generate') }}" class="mt-3">
+        <button class="btn btn--sm"><svg aria-hidden="true"><use href="#ico-doc"/></svg>Generate report now</button>
+      </form>
+    </section>
   </div>
 </div>
-
-<section class="mt-lg">
-  <div class="row row--between" style="margin-bottom: 12px;">
-    <h2 class="section-title" style="margin: 0;">Recent events</h2>
-    <a class="btn btn--ghost btn--sm" href="{{ url_for('insights_page') }}">View all →</a>
-  </div>
-  <div class="table-wrap">
-    <table class="table">
-      <thead>
-        <tr>
-          <th style="width: 160px;">Time</th>
-          <th>Container</th>
-          <th style="width: 110px;">Severity</th>
-          <th style="width: 120px;">Status</th>
-          <th>Summary</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for e in events %}
-          <tr>
-            <td class="table__time">{{ e.created_at }}</td>
-            <td class="table__container">{{ e.container_name }}</td>
-            <td>
-              {% if e.classification == 'critical' %}
-                <span class="badge badge--critical">critical</span>
-              {% elif e.classification == 'warning' %}
-                <span class="badge badge--warning">warning</span>
-              {% else %}
-                <span class="badge badge--noise">{{ e.classification or 'noise' }}</span>
-              {% endif %}
-            </td>
-            <td class="text-mono text-secondary">{{ e.status }}</td>
-            <td class="text-secondary">{{ e.summary or '—' }}</td>
-          </tr>
-        {% else %}
-          <tr>
-            <td colspan="5">
-              <div class="empty">
-                <div class="empty__icon">∅</div>
-                <p class="empty__title">No events yet</p>
-                <p>Start the sentinel and attach to a container to begin capturing events.</p>
-              </div>
-            </td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</section>
 {% endblock %}
