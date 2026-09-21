@@ -334,3 +334,19 @@ def test_every_event_status_has_an_explanation():
 
     for status in EVENT_STATUSES:
         assert explain_status(status)["why"], status
+
+
+def test_console_inventory_filter_and_selection(tmp_path, monkeypatch):
+    app = _build_app(tmp_path, monkeypatch)
+    _seed(app)
+    monkeypatch.setattr("app.web.routes._list_running_containers", lambda: ["quiet-service"])
+    client = app.test_client()
+    html = client.get("/dashboard?container=quiet-service").get_data(as_text=True)
+    assert 'id="selected-title">quiet-service</h2>' in html
+    assert "No recorded events today" in html
+    assert "No events" in html
+    assert "attachment unknown" in html
+    html = client.get("/dashboard?view=attention&container=quiet-service").get_data(as_text=True)
+    assert 'id="selected-title">web</h2>' in html
+    assert "quiet-service" not in html.split('class="console-table"')[1].split('</table>')[0]
+    assert client.get("/dashboard?container=%3Cscript%3E&view=unknown").status_code == 200

@@ -99,7 +99,7 @@ def _setup_flags(state, settings) -> dict[str, bool]:
     }
 
 
-def _fleet(events, settings, mutes, excluded_fn) -> list[dict]:
+def _fleet(events, settings, mutes, excluded_fn, known_names=()) -> list[dict]:
     """Per-container rollup for today's events (worst-first)."""
     rows: dict[str, dict] = {}
     for e in events:
@@ -139,6 +139,10 @@ def _fleet(events, settings, mutes, excluded_fn) -> list[dict]:
             row["container_id"] = e.container_id or row["container_id"]
             if e.summary:
                 row["last_summary"] = e.summary
+    for name in known_names:
+        rows.setdefault(name, dict(name=name, container_id=None, worst=None, events=0,
+                                   analyzed=0, alerted=0, suppressed=0, errors=0,
+                                   lifecycle=0, last_at=None, last_summary=None))
     muted_names = {m.container_name for m in mutes}
     for row in rows.values():
         row["muted"] = row["name"] in muted_names
@@ -183,7 +187,20 @@ def dashboard():
     attention = sorted(attention, key=lambda a: (-classification_rank(a["event"].classification), -(a["event"].created_at or now).timestamp()))[:8]
 
     mutes = container.mute_repo.list_active(now)
-    fleet = _fleet(today_events, settings, mutes, container.sentinel.is_excluded_container)
+    known_containers = _list_running_containers()
+    open_count = incident_queries.count_open()
+    open_names = incident_queries.open_container_names()
+    fleet = _fleet(today_events, settings, mutes, container.sentinel.is_excluded_container, set(known_containers) | open_names)
+    for row in fleet:
+        row["open_incident"] = row["name"] in open_names
+        row["needs_attention"] = row["rank"] > 0 or row["open_incident"]
+    fleet_view = "attention" if request.args.get("view") == "attention" else "all"
+    if fleet_view == "attention":
+        fleet = [row for row in fleet if row["needs_attention"]]
+    selected = next((row for row in fleet if row["name"] == request.args.get("container")), fleet[0] if fleet else None)
+    selected_events = [e for e in today_events if selected and (e.container_name or e.container_id or "?") == selected["name"]]
+    selected_events.sort(key=lambda e: e.created_at or today_start, reverse=True)
+    evidence = next((e for e in selected_events if e.status in {"analyzed", "llm_error", "parse_error", "container_event"}), selected_events[0] if selected_events else None)
     active_ids = set(container.coordinator.active_container_ids())
     for row in fleet:
         row["attached"] = bool(row.get("container_id") and row["container_id"] in active_ids)
@@ -198,6 +215,9 @@ def dashboard():
         verdict = ("stopped", "Sentinel is stopped", "No containers are being watched and no alerts will fire.")
     elif degraded:
         verdict = ("degraded", "Sentinel is degraded", state.last_error or f"LLM failed {state.llm_failure_count}× since start.")
+    elif open_count:
+        verdict = ("attention", f"{open_count} open incident{'s need' if open_count != 1 else ' needs'} attention",
+                   "Review recurring problems below. Resolving an incident records your decision; it does not repair the container.")
     elif attention or counts["critical"]:
         n = len(attention)
         verdict = (
@@ -220,7 +240,12 @@ def dashboard():
         events=events,
         latest_report=latest_report,
         active_containers=list(active_ids),
-        known_containers=_list_running_containers(),
+        known_containers=known_containers,
+        fleet_view=fleet_view,
+        selected=selected,
+        evidence=evidence,
+        evidence_outcome=alert_outcome(evidence, settings) if evidence else None,
+        selected_funnel=build_funnel(selected_events, settings),
         analyze_error=request.args.get("analyze_error"),
         settings=settings,
         mutes=mutes,

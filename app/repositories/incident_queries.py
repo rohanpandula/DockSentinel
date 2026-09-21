@@ -32,3 +32,7 @@ def open_for_container(container_name: str, limit: int = 20) -> list[Incident]:
         .limit(limit)
         .all()
     )
+
+
+def open_container_names() -> set[str]:
+    return {name for (name,) in db.session.query(Incident.container_name).filter(Incident.status == "open").distinct() if name}

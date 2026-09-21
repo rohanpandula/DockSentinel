@@ -1,3 +1,10 @@
+## Contributor attribution
+
+Follow the contributor-attribution policy in `AGENTS.md`: credit human
+contributors only, use the configured human Git identity, and do not add AI
+authors, contributor credits, or `Co-Authored-By` trailers to future work.
+Preserve existing Git history and accurate documentation of supported backends.
+
 <!-- GSD:project-start source:PROJECT.md -->
 ## Project
 

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "_macros.html" import sev_badge, container_link, outcome_badge, event_row %}
-{% block title %}DockSentinel — Now{% endblock %}
+{% block title %}DockSentinel — Overview{% endblock %}
 {% block content %}
 {% set kind, verdict_title, verdict_reason = verdict %}
 
@@ -11,12 +11,14 @@
 </div>
 {% endif %}
 
+<div class="page-head"><div><h1 class="page-head__title">Container overview</h1><p class="page-head__sub">Today since 00:00 UTC · select a container to inspect its evidence</p></div></div>
+
 <!-- ── J1: verdict strip — answer "is everything OK?" in one line ─────────── -->
 <section class="verdict verdict--{{ kind }}" aria-labelledby="hero-title">
   <div class="verdict__main">
     <span class="verdict__dot pulse {% if kind == 'ok' %}pulse--live{% endif %}" aria-hidden="true"></span>
     <div class="verdict__text">
-      <h1 class="verdict__title" id="hero-title">{{ verdict_title }}</h1>
+      <h2 class="verdict__title" id="hero-title">{{ verdict_title }}</h2>
       <p class="verdict__reason">{{ verdict_reason }}{% if kind == 'degraded' and state.llm_failure_count %} <span class="text-tertiary">· {{ state.llm_failure_count }} LLM failure{{ '' if state.llm_failure_count == 1 else 's' }}</span>{% endif %}</p>
     </div>
   </div>
@@ -181,6 +183,42 @@
 </section>
 {% endif %}
 
+<section class="console-fleet mt-4" aria-labelledby="fleet-title">
+  <div class="section-head">
+    <h2 class="section-title" id="fleet-title">Fleet today</h2>
+    <nav class="chips" aria-label="Container filter">
+      <a class="chip {% if fleet_view == 'all' %}chip--active{% endif %}" href="{{ url_for('dashboard', container=selected.name if selected else '') }}" {% if fleet_view == 'all' %}aria-current="page"{% endif %}>All containers</a>
+      <a class="chip {% if fleet_view == 'attention' %}chip--active{% endif %}" href="{{ url_for('dashboard', view='attention', container=selected.name if selected else '') }}" {% if fleet_view == 'attention' %}aria-current="page"{% endif %}>Needs attention</a>
+    </nav>
+  </div>
+  <div class="console-table" tabindex="0" role="region" aria-label="Container activity table">
+    <table>
+      <thead><tr><th scope="col">Container</th><th scope="col">Worst today</th><th scope="col">Latest summary</th><th scope="col">Events</th><th scope="col">Alerts</th><th scope="col">Last event · UTC</th></tr></thead>
+      <tbody>{% for c in fleet %}
+        <tr {% if selected and c.name == selected.name %}class="is-selected"{% endif %}>
+          <th scope="row"><a href="{{ url_for('dashboard', container=c.name, view=fleet_view) }}#container-detail" {% if selected and c.name == selected.name %}aria-current="true"{% endif %}>{{ c.name }}</a><span class="console-flags">{% if c.excluded %}excluded{% elif c.attached %}watching{% elif not c.container_id %}attachment unknown{% else %}not attached{% endif %}{% if c.open_incident %} · open incident{% endif %}{% if c.muted %} · muted{% endif %}</span></th>
+          <td><span class="text-{{ 'critical' if c.worst == 'critical' else 'warning' if c.worst == 'warning' or c.errors else 'secondary' }}">{{ c.worst or ('LLM error' if c.errors else 'No verdict' if c.events else 'No events') }}</span>{% if c.errors and c.worst %}<span class="console-flags">{{ c.errors }} analysis errors</span>{% endif %}</td>
+          <td class="console-summary">{{ c.last_summary or '—' }}</td><td class="tabular">{{ c.events }}</td><td class="tabular">{{ c.alerted }}</td><td class="text-mono">{{ c.last_at|dt('%H:%M') if c.last_at else '—' }}</td>
+        </tr>
+      {% else %}<tr><td colspan="6">{{ 'No containers need attention in this view.' if fleet_view == 'attention' else 'No container activity today. Start the sentinel or check Docker access.' }}</td></tr>{% endfor %}</tbody>
+    </table>
+  </div>
+  {% if selected %}
+  <section class="console-inspector" id="container-detail" aria-labelledby="selected-title">
+    <div class="console-inspector__head"><div><span class="text-tertiary text-xs">SELECTED CONTAINER</span><h2 class="section-title text-mono" id="selected-title">{{ selected.name }}</h2></div><a class="btn btn--sm" href="{{ url_for('container_page', name=selected.name) }}">Full history & controls →</a></div>
+    <div class="console-inspector__body">
+      <div><h3 class="section-title">Latest evidence</h3>
+        {% if evidence %}<p class="text-secondary text-sm">{{ evidence.created_at|dt }} UTC · {{ evidence.status }}</p><p>{{ evidence.summary or 'No analysis summary for this event.' }}</p><pre class="console-log">{{ evidence.chunk_excerpt or 'No log excerpt recorded.' }}</pre><a href="{{ url_for('insights_page', event=evidence.id, container=selected.name) }}">Inspect event #{{ evidence.id }} →</a>
+        {% else %}<p class="text-secondary">No recorded events today. Monitoring status alone does not establish container health.</p>{% endif %}
+      </div>
+      <div><h3 class="section-title">Pipeline today</h3><dl class="console-counts">{% for stage in selected_funnel.stages %}<div><dt>{{ stage.label }}</dt><dd class="tabular">{{ stage.count }}</dd></div>{% endfor %}</dl>
+        {% if evidence_outcome %}<p class="text-sm">{{ outcome_badge(evidence_outcome) }}</p>{% if evidence_outcome.why %}<p class="text-secondary text-sm">{{ evidence_outcome.why }}</p>{% endif %}{% endif %}
+      </div>
+    </div>
+  </section>
+  {% endif %}
+</section>
+
 <div class="grid grid--dash mt-4">
   <div class="stack">
 
@@ -235,40 +273,6 @@
       <div class="card allclear">
         <svg aria-hidden="true"><use href="#ico-shield"/></svg>
         <span>Nothing pending — every critical/warning verdict today was delivered{% if not counts.critical and not counts.warning %} (there were none){% endif %}.</span>
-      </div>
-      {% endif %}
-    </section>
-
-    <!-- ── Fleet ────────────────────────────────────────────────────────── -->
-    <section aria-labelledby="fleet-title">
-      <div class="section-head">
-        <h2 class="section-title" id="fleet-title">Fleet today</h2>
-        <span class="text-tertiary text-sm">{{ fleet|length }} container{{ '' if fleet|length == 1 else 's' }} with events · click one to trace its pipeline</span>
-      </div>
-      {% if fleet %}
-      <div class="fleet">
-        {% for c in fleet %}
-          <a class="ctile ctile--{{ c.worst or ('error' if c.errors else 'quiet') }}" href="{{ url_for('container_page', name=c.name) }}">
-            <span class="ctile__name" title="{{ c.name }}">{{ c.name }}</span>
-            <span class="ctile__verdict">
-              {% if c.worst == 'critical' %}critical{% elif c.worst == 'warning' %}warning{% elif c.errors %}LLM error{% elif c.worst == 'noise' %}noise only{% else %}quiet{% endif %}
-            </span>
-            <span class="ctile__meta">
-              <span class="tabular">{{ c.events }}</span> ev{% if c.alerted %} · <span class="text-ok tabular">{{ c.alerted }}</span> alerted{% endif %}{% if c.suppressed %} · <span class="text-warning tabular">{{ c.suppressed }}</span> held{% endif %}
-            </span>
-            <span class="ctile__flags">
-              {% if c.muted %}<span class="badge badge--neutral badge--no-dot badge--muted">muted</span>{% endif %}
-              {% if c.excluded %}<span class="badge badge--neutral badge--no-dot">excluded</span>{% endif %}
-              {% if c.attached %}<span class="badge badge--ok badge--no-dot">attached</span>{% endif %}
-            </span>
-          </a>
-        {% endfor %}
-      </div>
-      {% else %}
-      <div class="card empty empty--compact">
-        <div class="empty__icon"><svg aria-hidden="true"><use href="#ico-box"/></svg></div>
-        <p class="empty__title">No container activity today</p>
-        <p>{% if state.enabled %}Logs are being watched; tiles appear as chunks pass the prefilter.{% else %}Start the sentinel to begin watching.{% endif %}</p>
       </div>
       {% endif %}
     </section>
